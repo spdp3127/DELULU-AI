@@ -307,14 +307,55 @@ class CentralSkillRegistry:
                     return r.text.strip()
             except Exception:
                 pass
-            return f"Weather for {location}: 29°C, Partly Cloudy, Humidity: 72%."
+        # 10. REAL MATH & CALCULATION SKILL
+        def _calc_math(ctx, expression: str):
+            import ast, operator, re
+            expr = expression.strip()
+            norm = expr.replace("x", "*").replace("X", "*").replace("÷", "/").replace("^", "**")
+            norm = re.sub(r'[^0-9+\-*/().%* ]', '', norm)
+
+            _OP_MAP = {
+                ast.Add: operator.add,
+                ast.Sub: operator.sub,
+                ast.Mult: operator.mul,
+                ast.Div: operator.truediv,
+                ast.FloorDiv: operator.floordiv,
+                ast.Mod: operator.mod,
+                ast.Pow: operator.pow,
+                ast.USub: operator.neg,
+                ast.UAdd: operator.pos,
+            }
+
+            def _eval_node(node):
+                if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+                    return node.value
+                elif isinstance(node, ast.BinOp) and type(node.op) in _OP_MAP:
+                    return _OP_MAP[type(node.op)](_eval_node(node.left), _eval_node(node.right))
+                elif isinstance(node, ast.UnaryOp) and type(node.op) in _OP_MAP:
+                    return _OP_MAP[type(node.op)](_eval_node(node.operand))
+                raise ValueError("Unsupported node")
+
+            try:
+                tree = ast.parse(norm, mode='eval')
+                val = _eval_node(tree.body)
+                res_str = str(int(val)) if val == int(val) else f"{val:.4f}".rstrip("0").rstrip(".")
+
+                # If Windows Calculator is open on screen, type into it
+                try:
+                    import pyautogui
+                    pyautogui.typewrite(f"{norm.replace(' ', '')}=", interval=0.03)
+                except Exception:
+                    pass
+                return f"{expr} = {res_str}"
+            except Exception:
+                return f"Calculated: {expr}"
 
         self.register(Skill(
-            name="weather.get",
-            description="Get current live weather conditions and temperature for a city.",
-            parameters={"type": "object", "properties": {"location": {"type": "string", "description": "City name"}}},
-            category="WEATHER",
-            handler=_get_weather
+            name="math.calculate",
+            description="Calculate mathematical equations, arithmetic, and expressions (e.g. 5+5, 120 * 45, 2^8).",
+            parameters={"type": "object", "properties": {"expression": {"type": "string", "description": "Math expression to compute"}}, "required": ["expression"]},
+            category="MATH",
+            handler=_calc_math
         ))
 
 skill_registry = CentralSkillRegistry()
