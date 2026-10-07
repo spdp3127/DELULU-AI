@@ -1,9 +1,9 @@
-// DELULU PWA Service Worker - v3.1 (ADA, SEO & Real Features)
-const CACHE_NAME = 'delulu-core-v3.1';
+// DELULU PWA Service Worker - v3.2 (Gemini Always-On Wake Word Engine)
+const CACHE_NAME = 'delulu-core-v3.2';
 const ASSETS_TO_CACHE = [
   '/',
-  '/static/css/style.css?v=3.1',
-  '/static/js/app.js?v=3.1',
+  '/static/css/style.css?v=3.2',
+  '/static/js/app.js?v=3.2',
   '/static/img/spdp_logo.png',
   '/manifest.json'
 ];

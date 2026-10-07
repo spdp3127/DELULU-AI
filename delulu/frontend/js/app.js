@@ -18,8 +18,8 @@ const $ = id => document.getElementById(id);
 // --- 1. CORE AI REACTOR STATE MACHINE & PALETTES ---
 // [name, caption, spin, pulse, rings, wave, rgb]
 const S = {
-  IDLE: ['Ready', 'Waiting for “Hey Delulu” or Ctrl + 0', .12, .02, .3, 0, [61, 232, 255]],
-  WAKE: ['Awake', 'JARVIS is online', .9, .1, 1, 0, [205, 248, 255]],
+  IDLE: ['Ready', 'Waiting for “Hey Delulu” or “ഡെലുലു”', .12, .02, .3, 0, [61, 232, 255]],
+  WAKE: ['Awake', 'DELULU is online', .9, .1, 1, 0, [205, 248, 255]],
   LISTENING: ['Listening', 'Go ahead, I am listening...', .4, .06, .7, 1, [61, 232, 255]],
   THINKING: ['Thinking', 'Analyzing and reasoning...', 1.8, .03, 1, 0, [110, 190, 255]],
   SPEAKING: ['Speaking', '', .45, .08, .6, 1.2, [61, 232, 255]],
@@ -64,9 +64,9 @@ function setCoreState(s, m) {
 
   // ADA Screen Reader Announcements
   if (s === 'SPEAKING' && m) {
-    announceToScreenReader(`JARVIS: ${m}`);
+    announceToScreenReader(`DELULU: ${m}`);
   } else if (s === 'LISTENING') {
-    announceToScreenReader('Microphone open. JARVIS is listening...');
+    announceToScreenReader('Microphone open. DELULU is listening...');
   } else if (s === 'EXECUTING') {
     announceToScreenReader(m || 'Executing system action...');
   }
@@ -81,6 +81,11 @@ function setCoreState(s, m) {
   }
 
   if (s === 'WAKE') pulse = 1;
+
+  // Auto-resume wake word background listener whenever entering IDLE
+  if (s === 'IDLE' && typeof resumeWakeWordListener === 'function') {
+    resumeWakeWordListener();
+  }
 }
 
 // --- 2. HTTP API CLIENT ---
@@ -131,6 +136,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupGlobalShortcuts();
   initTelemetrySystem();
   fetchCurrentVolume();
+
+  // Gemini-grade Always-On Wake Word Engine
+  updateWakeWordUI();
+  if (isWakeWordActive) {
+    startWakeWordListener();
+  }
+
+  // Audio & Microphone auto-unlock on first user gesture
+  const onFirstInteraction = () => {
+    unlockAudioEngine();
+    if (isWakeWordActive && !wakeWordRecognizer && !activeRecognition) {
+      startWakeWordListener();
+    }
+  };
+  window.addEventListener('click', onFirstInteraction, { passive: true });
+  window.addEventListener('keydown', onFirstInteraction, { passive: true });
+  window.addEventListener('touchstart', onFirstInteraction, { passive: true });
 });
 
 async function initDirectSession() {
@@ -350,56 +372,170 @@ function setupCommandBar() {
 
 let activeRecognition = null;
 let wakeWordRecognizer = null;
-let isWakeWordActive = localStorage.getItem('delulu_wake_active') === 'true';
+// Always active by default (like Google Assistant / Gemini), unless explicitly turned off
+let isWakeWordActive = localStorage.getItem('delulu_wake_active') !== 'false';
 
+// Comprehensive multilingual & phonetic wake word dictionary
 const WAKE_WORDS = [
-  // English
-  "hey delulu", "delulu", "jarvis", "hey jarvis", "hi delulu", "hello delulu", "ok delulu",
-  // Malayalam phonetic & script
-  "ഹേ ഡെലുലു", "ഡെലുലു", "ഡിലുലു", "ദെലുലു", "ദിലുലു", "ഡീലുലു",
-  "ജാർവിസ്", "ഹേ ജാർവിസ്", "ജാർവീസ്", "ജാർവിസെ",
-  "ഹായ് ഡെലുലു", "ഹലോ ഡെലുലു", "ഹേയ് ഡെലുലു", "ഹെ ഡെലുലു",
-  // Acoustic / Manglish interpretations
-  "a delulu", "hey dilulu", "dilulu", "deluloo"
+  // English variations
+  "hey delulu", "delulu", "hi delulu", "hello delulu", "ok delulu", "okay delulu", "hay delulu",
+  "hey de lulu", "de lulu", "the lulu", "hey the lulu", "dilulu", "hey dilulu", "day lulu",
+  "delu lu", "deluloo", "deloo loo", "deloo",
+  "hey jarvis", "jarvis", "ok jarvis", "hi jarvis",
+  "hey gemini", "gemini", "ok gemini",
+  // Malayalam script variations
+  "ഹേ ഡെലുലു", "ഡെലുലു", "ഡിലുലു", "ദെലുലു", "ദിലുലു", "ഡീലുലു", "ലുലു",
+  "ഹേയ് ഡെലുലു", "ഹായ് ഡെലുലു", "ഹലോ ഡെലുലു", "ഹെ ഡെലുലു",
+  "എടാ ഡെലുലു", "എടോ ഡെലുലു", "ഡെലുലു വേഗം വാ",
+  "ജാർവിസ്", "ഹേ ജാർവിസ്", "ജാർവീസ്", "ജാർവിസെ", "ഹേയ് ജാർവിസ്"
 ];
 
-function playJarvisChime() {
+// Audio Context unlocker for seamless immediate audio playback across Chrome / Edge
+function unlockAudioEngine() {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    const now = ctx.currentTime;
-    osc.frequency.setValueAtTime(587.33, now); // D5
-    osc.frequency.exponentialRampToValueAtTime(880, now + 0.12); // A5
-    gain.gain.setValueAtTime(0.16, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-    osc.start(now);
-    osc.stop(now + 0.32);
+    if (AudioCtx) {
+      if (!window._sharedAudioCtx) {
+        window._sharedAudioCtx = new AudioCtx();
+      }
+      if (window._sharedAudioCtx.state === 'suspended') {
+        window._sharedAudioCtx.resume();
+      }
+    }
   } catch(e) {}
+}
+
+// Iconic Gemini/Google Assistant style dual-harmonic ascending chime
+function playGeminiWakeChime() {
+  try {
+    unlockAudioEngine();
+    const ctx = window._sharedAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // Note 1: Warm foundation tone (D5 587.33Hz -> G5 783.99Hz)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now);
+    osc1.frequency.exponentialRampToValueAtTime(783.99, now + 0.08);
+    gain1.gain.setValueAtTime(0.2, now);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.13);
+
+    // Note 2: Gemini Signature Crystal Ascent (A5 880Hz -> D6 1174.66Hz)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(880, now + 0.07);
+    osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.18);
+    gain2.gain.setValueAtTime(0.001, now);
+    gain2.gain.setValueAtTime(0.22, now + 0.07);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.07);
+    osc2.stop(now + 0.39);
+  } catch(e) {}
+}
+
+// Immediate interruption of any ongoing TTS speech (Barge-in support)
+function cancelAssistantSpeech() {
+  if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+  }
+  const player = $('delulu-audio-player');
+  if (player) {
+    try {
+      player.pause();
+      player.currentTime = 0;
+    } catch(e) {}
+  }
+}
+
+// Multi-engine phonetic matcher for wake words (Handles Malayalam and English variations)
+function detectWakeWord(transcript) {
+  if (!transcript) return null;
+  const t = transcript.toLowerCase().trim();
+
+  // 1. Direct dictionary match
+  for (const w of WAKE_WORDS) {
+    const wl = w.toLowerCase();
+    const idx = t.indexOf(wl);
+    if (idx !== -1) {
+      const after = t.slice(idx + wl.length).replace(/^[,\s\.\?!:;]+/, '').trim();
+      return { matched: w, command: after };
+    }
+  }
+
+  // 2. English phonetic regex pattern
+  const deluluEnRegex = /\b(?:hey|hi|hello|ok|okay|a|hae|hai|yo)?\s*(?:delulu|de\s*lulu|the\s*lulu|dilulu|day\s*lulu|deloo|delu\s*lu|jarvis|gemini)\b/i;
+  const mEn = t.match(deluluEnRegex);
+  if (mEn) {
+    const after = t.slice(mEn.index + mEn[0].length).replace(/^[,\s\.\?!:;]+/, '').trim();
+    return { matched: mEn[0], command: after };
+  }
+
+  // 3. Malayalam Unicode phonetic regex pattern
+  const deluluMlRegex = /(?:ഹേ|ഹേയ്|ഹായ്|ഹലോ|എടാ|എടോ|ശരി)?\s*(?:ഡെലുലു|ഡിലുലു|ദെലുലു|ദിലുലു|ഡീലുലു|ജാർവിസ്|ലുലു)\b/i;
+  const mMl = t.match(deluluMlRegex);
+  if (mMl) {
+    const after = t.slice(mMl.index + mMl[0].length).replace(/^[,\s\.\?!:;]+/, '').trim();
+    return { matched: mMl[0], command: after };
+  }
+
+  return null;
+}
+
+// Master Wake Handler (triggered by voice or manual trigger)
+function handleWakeWordDetected(matchedWake, transcript, afterWake) {
+  console.log("Wake word detected:", matchedWake, "Raw transcript:", transcript, "Command:", afterWake);
+  cancelAssistantSpeech();
+  playGeminiWakeChime();
+  pulse = 1;
+
+  // Temporarily pause wake word ambient listener to free mic
+  if (wakeWordRecognizer) {
+    try { wakeWordRecognizer.stop(); } catch(err){}
+    wakeWordRecognizer = null;
+  }
+
+  if (afterWake && afterWake.length > 2) {
+    // Mode A: Spoken in a single breath (e.g. "Hey Delulu what's the weather?")
+    setCoreState('WAKE');
+    setTimeout(() => {
+      setCoreState('THINKING', state.voiceLang === 'ml-IN' ? 'പ്രോസസ്സ് ചെയ്യുന്നു...' : 'Processing...');
+      runDeluluCommand(afterWake);
+    }, 150);
+  } else {
+    // Mode B: Wake word only spoken (e.g. "Hey Delulu" or "ഡെലുലു") -> Open listening like Gemini
+    setCoreState('WAKE');
+    setTimeout(() => {
+      setCoreState('LISTENING', state.voiceLang === 'ml-IN' ? 'കേൾക്കുന്നു, പറയൂ...' : 'Listening, go ahead...');
+      startVoiceRecognition();
+    }, 180);
+  }
 }
 
 // Master wake trigger (used by Ctrl+0, Canvas click, and Wake Word detection)
 function triggerWake() {
-  unlockAudioEngine();
-  playJarvisChime();
+  cancelAssistantSpeech();
+  playGeminiWakeChime();
   pulse = 1;
 
-  // Temporarily pause wake word ambient listener to free the microphone
   if (wakeWordRecognizer) {
     try { wakeWordRecognizer.stop(); } catch(e){}
     wakeWordRecognizer = null;
   }
 
   setCoreState('WAKE');
-  setCoreState('LISTENING', state.voiceLang === 'ml-IN' ? 'കേൾക്കുന്നു, പറയൂ...' : 'Listening...');
-
-  // Start dedicated single-shot speech recognizer with zero delay
-  startVoiceRecognition();
+  setTimeout(() => {
+    setCoreState('LISTENING', state.voiceLang === 'ml-IN' ? 'കേൾക്കുന്നു, പറയൂ...' : 'Listening...');
+    startVoiceRecognition();
+  }, 120);
 }
 
 function toggleWakeWordListener() {
@@ -414,88 +550,68 @@ function toggleWakeWordListener() {
 
 function startWakeWordListener() {
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-    setCoreState('IDLE', 'Wake word listening not supported in this browser. Please use Chrome or Edge.');
+    updateWakeWordUI(false);
     return;
   }
 
-  // If already active or currently speaking, don't duplicate
-  if (wakeWordRecognizer || activeRecognition) return;
+  // Prevent duplicate instances or collision while speaking/executing
+  if (wakeWordRecognizer || activeRecognition || coreState === 'SPEAKING' || coreState === 'THINKING' || coreState === 'EXECUTING') {
+    return;
+  }
 
-  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  wakeWordRecognizer = new SpeechRec();
-  wakeWordRecognizer.continuous = true;
-  wakeWordRecognizer.interimResults = true;
-  wakeWordRecognizer.lang = state.voiceLang || 'ml-IN';
+  try {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    wakeWordRecognizer = new SpeechRec();
+    wakeWordRecognizer.continuous = true;
+    wakeWordRecognizer.interimResults = true;
+    wakeWordRecognizer.lang = state.voiceLang || 'ml-IN';
 
-  updateWakeWordUI();
+    wakeWordRecognizer.onstart = () => {
+      updateWakeWordUI(true);
+    };
 
-  wakeWordRecognizer.onresult = (e) => {
-    // If assistant is currently speaking or executing, ignore
-    if (coreState === 'SPEAKING' || coreState === 'EXECUTING' || coreState === 'THINKING') {
-      return;
-    }
+    wakeWordRecognizer.onresult = (e) => {
+      // Allow barge-in if assistant is speaking
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i];
+        const transcript = res[0].transcript;
+        const wakeHit = detectWakeWord(transcript);
 
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const res = e.results[i];
-      const transcript = res[0].transcript.toLowerCase().trim();
-
-      // Check for wake word in transcript
-      let matchedWake = null;
-      for (const w of WAKE_WORDS) {
-        if (transcript.includes(w)) {
-          matchedWake = w;
+        if (wakeHit) {
+          handleWakeWordDetected(wakeHit.matched, transcript, wakeHit.command);
           break;
         }
       }
+    };
 
-      if (matchedWake) {
-        console.log("Wake word detected:", matchedWake);
-        const wakeIdx = transcript.indexOf(matchedWake);
-        let afterWake = transcript.slice(wakeIdx + matchedWake.length).replace(/^[,\s]+/, '').trim();
-
-        // Halt ambient recognizer to prevent collision
-        if (wakeWordRecognizer) {
-          try { wakeWordRecognizer.stop(); } catch(err){}
-          wakeWordRecognizer = null;
-        }
-
-        if (afterWake && afterWake.length > 2) {
-          // Command spoken in the same breath (e.g. "Hey Delulu what is the time?")
-          playJarvisChime();
-          pulse = 1;
-          runDeluluCommand(afterWake);
-        } else {
-          // Just wake word spoken -> Transition to listening for command
-          triggerWake();
-        }
-        break;
+    wakeWordRecognizer.onerror = (err) => {
+      wakeWordRecognizer = null;
+      if (err.error === 'not-allowed') {
+        updateWakeWordUI(false);
+        return;
       }
-    }
-  };
+      // Auto-restart on transient errors
+      if (isWakeWordActive && (coreState === 'IDLE' || coreState === 'WAKE')) {
+        setTimeout(() => {
+          if (isWakeWordActive && !wakeWordRecognizer && !activeRecognition && (coreState === 'IDLE' || coreState === 'WAKE')) {
+            startWakeWordListener();
+          }
+        }, 800);
+      }
+    };
 
-  wakeWordRecognizer.onerror = (err) => {
-    wakeWordRecognizer = null;
-    if (isWakeWordActive && err.error !== 'not-allowed') {
-      setTimeout(() => {
-        if (isWakeWordActive && !activeRecognition && coreState === 'IDLE') {
-          startWakeWordListener();
-        }
-      }, 1000);
-    }
-  };
+    wakeWordRecognizer.onend = () => {
+      wakeWordRecognizer = null;
+      // Keep listening forever in background (watchdog loop)
+      if (isWakeWordActive && !activeRecognition && (coreState === 'IDLE' || coreState === 'WAKE')) {
+        setTimeout(() => {
+          if (isWakeWordActive && !wakeWordRecognizer && !activeRecognition && (coreState === 'IDLE' || coreState === 'WAKE')) {
+            startWakeWordListener();
+          }
+        }, 180);
+      }
+    };
 
-  wakeWordRecognizer.onend = () => {
-    wakeWordRecognizer = null;
-    if (isWakeWordActive && !activeRecognition && coreState === 'IDLE') {
-      setTimeout(() => {
-        if (isWakeWordActive && !activeRecognition && coreState === 'IDLE') {
-          startWakeWordListener();
-        }
-      }, 300);
-    }
-  };
-
-  try {
     wakeWordRecognizer.start();
   } catch (err) {
     wakeWordRecognizer = null;
@@ -509,7 +625,7 @@ function stopWakeWordListener() {
     try { wakeWordRecognizer.stop(); } catch(e){}
     wakeWordRecognizer = null;
   }
-  updateWakeWordUI();
+  updateWakeWordUI(false);
 }
 
 function resumeWakeWordListener() {
@@ -518,25 +634,27 @@ function resumeWakeWordListener() {
       if (isWakeWordActive && !wakeWordRecognizer && !activeRecognition && coreState === 'IDLE') {
         startWakeWordListener();
       }
-    }, 500);
+    }, 350);
   }
 }
 
-function updateWakeWordUI() {
+function updateWakeWordUI(running = isWakeWordActive) {
   const btn = $('wake-toggle-btn');
   if (btn) {
     if (isWakeWordActive) {
-      btn.textContent = '👂 WAKE WORD: ON (Say “Hey Delulu”)';
-      btn.style.background = 'rgba(var(--acc), .22)';
+      btn.innerHTML = '🟢 <span style="font-weight:700;">WAKE WORD: ON</span> (Say “Hey Delulu” / “ഡെലുലു”)';
+      btn.style.background = 'rgba(61, 232, 255, .18)';
       btn.style.borderColor = 'rgb(var(--acc))';
       btn.style.color = '#fff';
-      btn.style.boxShadow = '0 0 14px rgba(var(--acc), .4)';
+      btn.style.boxShadow = '0 0 16px rgba(var(--acc), .45)';
+      btn.setAttribute('aria-pressed', 'true');
     } else {
-      btn.textContent = '👂 WAKE WORD: OFF';
+      btn.innerHTML = '👂 <span>WAKE WORD: OFF</span>';
       btn.style.background = 'rgba(255, 255, 255, .05)';
       btn.style.borderColor = 'var(--line)';
       btn.style.color = 'var(--mut)';
       btn.style.boxShadow = 'none';
+      btn.setAttribute('aria-pressed', 'false');
     }
   }
 }
@@ -550,7 +668,7 @@ function toggleVoiceLang() {
       try { wakeWordRecognizer.stop(); } catch(e){}
       wakeWordRecognizer = null;
     }
-    startWakeWordListener();
+    setTimeout(startWakeWordListener, 250);
   }
 }
 
@@ -1122,7 +1240,7 @@ if ('serviceWorker' in navigator) {
   });
 
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js?v=3.1').then((reg) => {
+    navigator.serviceWorker.register('/sw.js?v=3.2').then((reg) => {
       reg.update();
       console.log('DELULU PWA ServiceWorker active:', reg.scope);
     }).catch((err) => {

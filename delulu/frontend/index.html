@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=3.1">
+  <link rel="stylesheet" href="/static/css/style.css?v=3.2">
 
   <!-- JSON-LD Semantic Structured Data Schema -->
   <script type="application/ld+json">
@@ -110,8 +110,8 @@
           <span id="engine-badge">SPDP NEURAL ENGINE // ACTIVE</span>
         </div>
         <div class="hud-mode-indicator" style="display: flex; gap: 8px; pointer-events: auto; flex-wrap: wrap;">
-          <button id="wake-toggle-btn" class="voice-badge" onclick="toggleWakeWordListener()" title="Toggle Ambient Wake Word Listening (Say 'Hey Delulu' or 'Jarvis')" aria-pressed="false" style="cursor: pointer;">
-            👂 WAKE WORD: OFF
+          <button id="wake-toggle-btn" class="voice-badge" onclick="toggleWakeWordListener()" title="Continuous Ambient Wake Word Listening (Say 'Hey Delulu' or 'ഡെലുലു')" aria-pressed="true" style="cursor: pointer;">
+            🟢 <span style="font-weight:700;">WAKE WORD: ON</span> (Say “Hey Delulu” / “ഡെലുലു”)
           </button>
           <button id="voice-lang-btn" class="voice-badge" onclick="toggleVoiceLang()" title="Toggle Voice Language (Malayalam / English)" style="cursor: pointer; background: rgba(var(--acc), .14); border-color: rgba(var(--acc), .4);">
             🎙️ വോയ്സ്: മലയാളം (ML)
@@ -126,7 +126,7 @@
           <span class="state-pulse-tag" id="state-tag">SYSTEM READY</span>
         </div>
         <h2 id="st">Ready</h2>
-        <p id="cap">Waiting for “Hey Delulu” or Ctrl + 0</p>
+        <p id="cap">Waiting for “Hey Delulu” or “ഡെലുലു”</p>
 
         <!-- Real Quick Action Buttons Bar -->
         <div class="quick-actions-bar" role="toolbar" aria-label="Quick System Controls">
@@ -272,6 +272,6 @@
   <!-- Dedicated Pre-unlocked Audio Player for High-fidelity Speech -->
   <audio id="delulu-audio-player" preload="auto" style="display: none;"></audio>
 
-  <script src="/static/js/app.js?v=3.1"></script>
+  <script src="/static/js/app.js?v=3.2"></script>
 </body>
 </html>
