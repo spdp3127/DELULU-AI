@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "public": false,
+  "rewrites": [
+    {
+      "source": "/static/:path*",
+      "destination": "/delulu/frontend/:path*"
+    },
+    {
+      "source": "/manifest.json",
+      "destination": "/delulu/frontend/manifest.json"
+    },
+    {
+      "source": "/sw.js",
+      "destination": "/delulu/frontend/sw.js"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/delulu/frontend/robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/delulu/frontend/sitemap.xml"
+    },
+    {
+      "source": "/",
+      "destination": "/delulu/frontend/index.html"
+    }
+  ]
+}

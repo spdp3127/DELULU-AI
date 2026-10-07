@@ -1,0 +1,33 @@
+# Environment Variables
+.env
+
+# Personal Data
+contacts.json
+whatsapp_profile/
+JARVIS_Screenshots/
+
+# Python / System
+__pycache__/
+*.pyc
+.DS_Store
+venv/
+.venv/
+.python-version
+
+# Large ML Weights / Binary Models
+*.pt
+*.onnx
+
+# Logs and User Notes
+*.log
+PyWhatKit_DB.txt
+
+# Generated Runtime Content
+# Excluding captured photos and detections while keeping static assets like arc_reactor.png
+assets/detection_*.jpg
+assets/photo_*.jpg
+venv_trash/
+
+# Platform Database & Private User Storage
+delulu_platform.db*
+delulu/storage/users/

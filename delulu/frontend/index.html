@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DELULU // JARVIS - AI Personal Operating Layer &amp; Desktop Assistant</title>
+  
+  <!-- SEO & Standard Discovery Meta Tags -->
+  <meta name="description" content="DELULU is an advanced AI personal operating layer and desktop assistant by SPDP. Featuring voice interaction, hardware telemetry, desktop automation, and persistent memory.">
+  <meta name="keywords" content="DELULU, JARVIS, AI Personal Operating Layer, Desktop Assistant, Voice Assistant, SPDP, Malayalam AI, System Automation, Telemetry">
+  <meta name="author" content="SPDP Digital Platforms / Devaprayag">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="http://localhost:8000/">
+
+  <!-- Open Graph / Facebook Protocol -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="DELULU AI Platform">
+  <meta property="og:title" content="DELULU // JARVIS - AI Personal Operating Layer">
+  <meta property="og:description" content="Autonomous AI personal operating layer with voice and desktop control, hardware telemetry, and persistent memory.">
+  <meta property="og:image" content="/static/img/spdp_logo.png">
+  <meta property="og:url" content="http://localhost:8000/">
+
+  <!-- Twitter Card Protocol -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="DELULU // JARVIS - AI Personal Operating Layer">
+  <meta name="twitter:description" content="AI personal operating layer and desktop assistant by SPDP.">
+  <meta name="twitter:image" content="/static/img/spdp_logo.png">
+
+  <!-- PWA & Mobile Web Capabilities -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#070b10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/static/img/spdp_logo.png">
+
+  <!-- Typography & Performance Preconnects -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=3.1">
+
+  <!-- JSON-LD Semantic Structured Data Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "DELULU // JARVIS",
+    "applicationCategory": "UtilitiesApplication",
+    "operatingSystem": "Windows, Web",
+    "description": "AI Personal Operating Layer and desktop assistant with voice control, persistent memory, and real-time hardware telemetry.",
+    "author": {
+      "@type": "Organization",
+      "name": "SPDP Digital Platforms"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <!-- ADA Skip to Main Content Navigation Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Screen Reader Live Announcer Region -->
+  <div id="a11y-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- TOP HEADER -->
+  <header role="banner">
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <img src="/static/img/spdp_logo.png" alt="SPDP Digital Platforms Logo" style="height: 32px; border-radius: 6px; box-shadow: 0 0 10px rgba(var(--acc), .25); object-fit: contain;">
+      <b class="mark">DELULU</b>
+      <span class="hud-pill" style="font-size: 10px; padding: 3px 9px; border-radius: 999px; background: rgba(var(--acc), .12); color: rgb(var(--acc)); border: 1px solid rgba(var(--acc), .3); letter-spacing: .08em; font-weight: 600;">SPDP DIGITAL PLATFORM</span>
+      
+      <!-- Real Hardware Telemetry Quick Meter -->
+      <button type="button" class="telemetry-bar" id="telemetry-hud-btn" onclick="openDiagnosticsModal()" aria-label="System Hardware Telemetry. Click to view detailed diagnostics." title="Click for System Diagnostics (Ctrl+Shift+D)">
+        <span class="telemetry-metric">⚡ CPU: <span id="tele-cpu" class="telemetry-val">--</span>%</span>
+        <span class="telemetry-divider">|</span>
+        <span class="telemetry-metric">💾 RAM: <span id="tele-ram" class="telemetry-val">--</span>%</span>
+        <span class="telemetry-divider">|</span>
+        <span class="telemetry-metric" id="tele-batt-wrap">🔋 <span id="tele-batt" class="telemetry-val">--</span>%</span>
+      </button>
+
+      <button id="pwa-install-btn" class="hud-pill" style="display: none; cursor: pointer; border: 1px solid rgba(var(--acc), .5); background: rgba(var(--acc), .2); color: #fff; font-size: 10px; font-weight: 600; padding: 4px 10px; border-radius: 999px; transition: all .2s ease;" onclick="promptPWAInstall()" title="Install DELULU as Desktop Application">📥 INSTALL APP</button>
+      <button type="button" class="hud-pill" onclick="openShortcutsModal()" aria-label="View keyboard shortcuts" title="Keyboard Shortcuts (?)" style="cursor: pointer;">⌨️ SHORTCUTS</button>
+    </div>
+
+    <div class="meta" aria-label="System Time and Status">
+      <span id="clk" aria-label="Current System Time"></span>
+      <i id="dot" class="on" aria-hidden="true"></i>
+      <span id="link">Online</span>
+    </div>
+  </header>
+
+  <!-- MAIN 2-COLUMN VIEW: CORE ASSISTANT + HISTORY -->
+  <main class="hud-layout" id="main-content" role="main">
+    <h1 class="sr-only">DELULU AI Personal Operating Layer &amp; Desktop Assistant Control Interface</h1>
+
+    <!-- LEFT / CENTER: CORE ASSISTANT -->
+    <section class="stage glass" id="core-stage" aria-labelledby="st">
+      <canvas id="c" role="img" aria-label="Interactive 3D Arc Reactor Core. Click to activate speech listening." tabindex="0"></canvas>
+
+      <!-- Ambient HUD Status Bar -->
+      <div class="hud-top-bar">
+        <div class="hud-status-indicator">
+          <span class="hud-live-dot" aria-hidden="true"></span>
+          <span id="engine-badge">SPDP NEURAL ENGINE // ACTIVE</span>
+        </div>
+        <div class="hud-mode-indicator" style="display: flex; gap: 8px; pointer-events: auto; flex-wrap: wrap;">
+          <button id="wake-toggle-btn" class="voice-badge" onclick="toggleWakeWordListener()" title="Toggle Ambient Wake Word Listening (Say 'Hey Delulu' or 'Jarvis')" aria-pressed="false" style="cursor: pointer;">
+            👂 WAKE WORD: OFF
+          </button>
+          <button id="voice-lang-btn" class="voice-badge" onclick="toggleVoiceLang()" title="Toggle Voice Language (Malayalam / English)" style="cursor: pointer; background: rgba(var(--acc), .14); border-color: rgba(var(--acc), .4);">
+            🎙️ വോയ്സ്: മലയാളം (ML)
+          </button>
+          <span id="voice-indicator" class="voice-badge">VOICE READY</span>
+        </div>
+      </div>
+
+      <!-- Live Core Assistant Readout -->
+      <div class="read" aria-live="polite">
+        <div class="state-label-wrap">
+          <span class="state-pulse-tag" id="state-tag">SYSTEM READY</span>
+        </div>
+        <h2 id="st">Ready</h2>
+        <p id="cap">Waiting for “Hey Delulu” or Ctrl + 0</p>
+
+        <!-- Real Quick Action Buttons Bar -->
+        <div class="quick-actions-bar" role="toolbar" aria-label="Quick System Controls">
+          <button type="button" class="action-btn" onclick="triggerQuickScreenshot()" title="Take Desktop Screenshot (Ctrl+Shift+S)" aria-label="Take Desktop Screenshot">
+            📸 Screenshot
+          </button>
+          <button type="button" class="action-btn" onclick="toggleVolumePopover()" id="vol-btn" title="Adjust System Volume" aria-label="Adjust System Volume">
+            🔊 Vol: <span id="vol-val-btn">50%</span>
+          </button>
+          <button type="button" class="action-btn" onclick="openDiagnosticsModal()" title="Open System Diagnostics" aria-label="System Hardware Diagnostics">
+            ⚡ Diagnostics
+          </button>
+          <button type="button" class="action-btn" onclick="executeChip('weather in Kochi')" title="Check Weather" aria-label="Check Weather">
+            🌦️ Weather
+          </button>
+        </div>
+
+        <!-- Master Volume Quick Slider (Flyout) -->
+        <div id="vol-popover" style="display: none; margin-top: 10px; align-items: center; justify-content: center; gap: 10px; background: rgba(10, 15, 25, 0.85); padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(var(--acc), 0.35);">
+          <label for="master-vol-range" style="font-size: 11px; color: var(--mut);">Master Volume:</label>
+          <input type="range" id="master-vol-range" min="0" max="100" value="50" oninput="changeMasterVolume(this.value)" style="accent-color: rgb(var(--acc)); cursor: pointer;">
+          <span id="vol-slider-label" style="font-size: 11px; font-weight: bold; min-width: 32px; color: rgb(var(--acc));">50%</span>
+        </div>
+
+        <!-- Instant Suggestion Action Chips -->
+        <div class="quick-prompts" id="quick-prompts" role="group" aria-label="Quick AI Commands">
+          <button type="button" class="prompt-chip" onclick="executeChip('📸 take a screenshot')">📸 Screenshot എടുക്കൂ</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('⚡ show system telemetry')">⚡ Hardware Status</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('🌦️ what is the weather today?')">🌦️ കാലാവസ്ഥ എന്താണ്?</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('സമയം എത്രയായി?')">⏰ സമയം എത്രയായി?</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('സുഖമാണോ? എന്താ വിശേഷം?')">✨ സുഖമാണോ?</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('ഒരു തമാശ പറയൂ')">🎭 ഒരു തമാശ</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: CONVERSATION & ACTIVITY HISTORY -->
+    <aside class="glass" id="history-panel" role="complementary" aria-label="Conversation and Execution Stream">
+      <div class="history-header">
+        <div>
+          <h2>History &amp; Activity</h2>
+          <p class="history-sub">Real-time dialogue stream and executed actions</p>
+        </div>
+        <div class="history-actions">
+          <button type="button" class="btn btn-sm" title="New Session" onclick="createNewChatSession()">+ New</button>
+          <button type="button" class="btn btn-sm" title="Clear History" onclick="clearHistoryUI()">Clear</button>
+        </div>
+      </div>
+
+      <!-- Security approval modal if action requires authorization -->
+      <div id="appr" hidden role="alertdialog" aria-labelledby="apt" aria-describedby="apt">
+        <p id="apt">Delulu needs your approval to continue.</p>
+        <div>
+          <button type="button" class="btn p" id="ok">Approve</button>
+          <button type="button" class="btn" id="no">Deny</button>
+        </div>
+      </div>
+
+      <!-- Unified Dialogue & Activity Stream -->
+      <div class="history-feed" id="history-feed" role="log" aria-live="polite">
+        <div class="history-empty" id="history-empty">
+          <i>✦</i>
+          <p>No past messages yet.<br>Speak or send a command to start.</p>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- BOTTOM COMMAND FORM -->
+  <form class="glass" id="f" role="search" aria-label="JARVIS Voice and Text Command Interface" autocomplete="off">
+    <button type="button" class="mic" id="mic" aria-label="Wake Delulu Voice" title="Speak to JARVIS (Ctrl+0)" aria-keyshortcuts="Control+0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">
+        <rect x="9" y="3" width="6" height="12" rx="3"></rect><path d="M5 11a7 7 0 0014 0M12 18v3"></path>
+      </svg>
+      <span class="mic-wave" aria-hidden="true"></span>
+    </button>
+    <label for="cmd" class="sr-only">Ask JARVIS anything or enter a desktop automation command</label>
+    <input id="cmd" placeholder="Ask JARVIS anything, say “Hey Delulu”, or click mic..." aria-label="Command input" required>
+    <button type="submit" class="send-btn" id="send-btn" aria-label="Send command to JARVIS" title="Send (Enter)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+    <kbd title="Press Ctrl + 0 to speak" aria-hidden="true">Ctrl + 0</kbd>
+  </form>
+
+  <!-- ACCESSIBLE NATIVE DIALOG: KEYBOARD SHORTCUTS -->
+  <dialog id="shortcuts-dialog" class="glass-dialog" aria-labelledby="shortcuts-dialog-title">
+    <div class="dialog-header">
+      <h2 id="shortcuts-dialog-title">⌨️ Keyboard Shortcuts (ADA)</h2>
+      <button type="button" class="dialog-close-btn" onclick="closeShortcutsModal()" aria-label="Close shortcuts modal">✕ Esc</button>
+    </div>
+    <div class="shortcut-row"><span>Toggle Voice Listening</span><kbd>Ctrl + 0</kbd></div>
+    <div class="shortcut-row"><span>Focus Command Bar</span><kbd>Ctrl + K / /</kbd></div>
+    <div class="shortcut-row"><span>Toggle Voice Language (Malayalam / English)</span><kbd>Ctrl + M</kbd></div>
+    <div class="shortcut-row"><span>Capture Desktop Screenshot</span><kbd>Ctrl + Shift + S</kbd></div>
+    <div class="shortcut-row"><span>Open Hardware Diagnostics</span><kbd>Ctrl + Shift + D</kbd></div>
+    <div class="shortcut-row"><span>Stop Speech / Close Overlays</span><kbd>Esc</kbd></div>
+    <div class="shortcut-row"><span>Open this Shortcuts Guide</span><kbd>?</kbd></div>
+    <div style="margin-top: 18px; text-align: right;">
+      <button type="button" class="btn btn-sm" onclick="closeShortcutsModal()">Close</button>
+    </div>
+  </dialog>
+
+  <!-- ACCESSIBLE NATIVE DIALOG: LIVE HARDWARE DIAGNOSTICS -->
+  <dialog id="diagnostics-dialog" class="glass-dialog" aria-labelledby="diag-dialog-title">
+    <div class="dialog-header">
+      <h2 id="diag-dialog-title">⚡ Live System Hardware Telemetry</h2>
+      <button type="button" class="dialog-close-btn" onclick="closeDiagnosticsModal()" aria-label="Close diagnostics modal">✕ Esc</button>
+    </div>
+    <div class="telemetry-grid">
+      <div class="telemetry-card">
+        <div class="telemetry-card-title">Processor (CPU)</div>
+        <div class="telemetry-card-val"><span id="diag-cpu-val">--</span>%</div>
+        <div class="telemetry-card-sub"><span id="diag-cpu-cores">--</span> Cores Active</div>
+      </div>
+      <div class="telemetry-card">
+        <div class="telemetry-card-title">System Memory (RAM)</div>
+        <div class="telemetry-card-val"><span id="diag-ram-val">--</span>%</div>
+        <div class="telemetry-card-sub"><span id="diag-ram-gb">--</span> GB Utilized</div>
+      </div>
+      <div class="telemetry-card">
+        <div class="telemetry-card-title">Battery Level</div>
+        <div class="telemetry-card-val"><span id="diag-batt-val">--</span>%</div>
+        <div class="telemetry-card-sub"><span id="diag-batt-stat">Checking...</span></div>
+      </div>
+      <div class="telemetry-card">
+        <div class="telemetry-card-title">Storage Drive (C:)</div>
+        <div class="telemetry-card-val"><span id="diag-disk-val">--</span> GB Free</div>
+        <div class="telemetry-card-sub"><span id="diag-disk-total">--</span> GB Total</div>
+      </div>
+    </div>
+    <div style="font-size: 12px; color: var(--mut); margin-bottom: 16px;">
+      OS: <span id="diag-os">Windows</span> | System Uptime: <span id="diag-uptime">--</span>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <button type="button" class="btn btn-sm" onclick="fetchLiveTelemetry(true)">🔄 Refresh Metrics</button>
+      <button type="button" class="btn btn-sm p" onclick="closeDiagnosticsModal()">Done</button>
+    </div>
+  </dialog>
+
+  <!-- Dedicated Pre-unlocked Audio Player for High-fidelity Speech -->
+  <audio id="delulu-audio-player" preload="auto" style="display: none;"></audio>
+
+  <script src="/static/js/app.js?v=3.1"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "DELULU // J.A.R.V.I.S. Core Assistant",
+  "short_name": "DELULU",
+  "description": "SPDP Personal AI Operating Layer with Ambient Voice & Desktop Control",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070b10",
+  "theme_color": "#070b10",
+  "icons": [
+    {
+      "src": "/static/img/spdp_logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/img/spdp_logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "productivity"]
+}
