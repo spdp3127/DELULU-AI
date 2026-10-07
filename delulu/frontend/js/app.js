@@ -10,7 +10,7 @@ const state = {
   user: null,
   currentConvId: null,
   isListening: false,
-  voiceLang: localStorage.getItem("delulu_voice_lang") || "ml-IN"
+  voiceLang: localStorage.getItem("delulu_voice_lang") || "en-US"
 };
 
 const $ = id => document.getElementById(id);
@@ -18,7 +18,7 @@ const $ = id => document.getElementById(id);
 // --- 1. CORE AI REACTOR STATE MACHINE & PALETTES ---
 // [name, caption, spin, pulse, rings, wave, rgb]
 const S = {
-  IDLE: ['Ready', 'Waiting for “Hey Delulu” or “ഡെലുലു”', .12, .02, .3, 0, [61, 232, 255]],
+  IDLE: ['Ready', 'Waiting for “Hey Delulu” or “Jarvis”', .12, .02, .3, 0, [61, 232, 255]],
   WAKE: ['Awake', 'DELULU is online', .9, .1, 1, 0, [205, 248, 255]],
   LISTENING: ['Listening', 'Go ahead, I am listening...', .4, .06, .7, 1, [61, 232, 255]],
   THINKING: ['Thinking', 'Analyzing and reasoning...', 1.8, .03, 1, 0, [110, 190, 255]],
@@ -550,7 +550,7 @@ function startUnifiedVoiceEngine() {
             // Wake word only: Transition to listening immediately on the same open mic
             setCoreState('WAKE');
             setTimeout(() => {
-              setCoreState('LISTENING', state.voiceLang === 'ml-IN' ? 'കേൾക്കുന്നു, പറയൂ...' : 'Listening, go ahead...');
+              setCoreState('LISTENING', 'Listening, go ahead...');
               const micBtn = $('mic');
               if (micBtn) micBtn.classList.add('active');
             }, 100);
@@ -650,7 +650,7 @@ function triggerWake() {
 
   setCoreState('WAKE');
   setTimeout(() => {
-    setCoreState('LISTENING', state.voiceLang === 'ml-IN' ? 'കേൾക്കുന്നു, പറയൂ...' : 'Listening, go ahead...');
+    setCoreState('LISTENING', 'Listening, go ahead...');
     const micBtn = $('mic');
     if (micBtn) micBtn.classList.add('active');
   }, 100);
@@ -708,10 +708,38 @@ function updateWakeWordUI(running = isVoiceEngineActive) {
   }
 }
 
-function toggleVoiceLang() {
-  state.voiceLang = state.voiceLang === 'ml-IN' ? 'en-US' : 'ml-IN';
-  localStorage.setItem('delulu_voice_lang', state.voiceLang);
+const SUPPORTED_LANGS = [
+  { code: 'en-US', name: 'English', short: 'EN', serverVoice: 'en-GB-RyanNeural' },
+  { code: 'hi-IN', name: 'Hindi', short: 'HI', serverVoice: 'hi-IN-MadhurNeural' },
+  { code: 'ja-JP', name: 'Japanese', short: 'JA', serverVoice: 'ja-JP-KeitaNeural' },
+  { code: 'ko-KR', name: 'Korean', short: 'KO', serverVoice: 'ko-KR-HyunsuMultilingualNeural' },
+  { code: 'zh-CN', name: 'Chinese', short: 'ZH', serverVoice: 'zh-CN-XiaoxiaoNeural' },
+  { code: 'ml-IN', name: 'Malayalam', short: 'ML', serverVoice: 'ml-IN-MidhunNeural' },
+  { code: 'es-ES', name: 'Spanish', short: 'ES', serverVoice: 'es-ES-XimenaNeural' },
+  { code: 'fr-FR', name: 'French', short: 'FR', serverVoice: 'fr-FR-VivienneMultilingualNeural' },
+  { code: 'de-DE', name: 'German', short: 'DE', serverVoice: 'de-DE-SeraphinaMultilingualNeural' },
+  { code: 'ar-SA', name: 'Arabic', short: 'AR', serverVoice: 'ar-SA-HamedNeural' },
+  { code: 'ta-IN', name: 'Tamil', short: 'TA', serverVoice: 'ta-IN-ValluvarNeural' }
+];
+
+function setVoiceLanguage(langCode) {
+  if (!langCode) return;
+  const match = SUPPORTED_LANGS.find(l => l.code === langCode || l.code.startsWith(langCode));
+  const newCode = match ? match.code : langCode;
+  state.voiceLang = newCode;
+  localStorage.setItem('delulu_voice_lang', newCode);
   updateVoiceLangUI();
+  if (voiceEngine) {
+    try {
+      voiceEngine.lang = newCode;
+    } catch(e){}
+  }
+}
+
+function cycleVoiceLang() {
+  const currentIdx = SUPPORTED_LANGS.findIndex(l => l.code === state.voiceLang);
+  const nextIdx = (currentIdx + 1) % SUPPORTED_LANGS.length;
+  setVoiceLanguage(SUPPORTED_LANGS[nextIdx].code);
   if (voiceEngine) {
     try { voiceEngine.stop(); } catch(e){}
     voiceEngine = null;
@@ -719,11 +747,16 @@ function toggleVoiceLang() {
   setTimeout(startUnifiedVoiceEngine, 250);
 }
 
+function toggleVoiceLang() {
+  cycleVoiceLang();
+}
+
 function updateVoiceLangUI() {
   const btn = $('voice-lang-btn');
   if (btn) {
-    btn.textContent = state.voiceLang === 'ml-IN' ? '🎙️ വോയ്സ്: മലയാളം (ML)' : '🎙️ VOICE: ENGLISH (EN)';
-    btn.style.background = state.voiceLang === 'ml-IN' ? 'rgba(var(--acc), .18)' : 'rgba(255, 255, 255, .05)';
+    const active = SUPPORTED_LANGS.find(l => l.code === state.voiceLang) || SUPPORTED_LANGS[0];
+    btn.innerHTML = `🎙️ <span style="font-weight:700;">LANG: ${active.name.toUpperCase()} (${active.short})</span>`;
+    btn.style.background = active.code === 'en-US' ? 'rgba(255, 255, 255, .05)' : 'rgba(var(--acc), .18)';
   }
 }
 
@@ -788,6 +821,10 @@ async function runDeluluCommand(cmdText) {
       elapsed: `${elapsedMs}ms`
     });
 
+    if (asstMsg.language) {
+      setVoiceLanguage(asstMsg.language);
+    }
+
     setCoreState('SPEAKING', asstMsg.content);
 
     // 4. Trigger voice synthesis instantly
@@ -824,7 +861,7 @@ window.addEventListener('click', unlockAudioEngine);
 window.addEventListener('keydown', unlockAudioEngine);
 window.addEventListener('touchstart', unlockAudioEngine);
 
-// Spoken voice synthesis (Native Malayalam Neural Voice + Web Speech API)
+// Universal Multi-Language Voice Synthesis (Auto Script Detection & Server Neural Fallback)
 function speakText(text) {
   unlockAudioEngine();
 
@@ -845,33 +882,54 @@ function speakText(text) {
     return;
   }
 
-  const hasMalayalam = /[\u0D00-\u0D7F]/.test(clean);
+  // Determine language code & server neural voice
+  let langCode = state.voiceLang || 'en-US';
+  let serverVoice = 'en-GB-RyanNeural';
 
-  // If text contains Malayalam: use Malayalam voice
-  if (hasMalayalam) {
-    // 1. Check if browser has a native Malayalam voice
-    if ('speechSynthesis' in window) {
-      const voices = window.speechSynthesis.getVoices();
-      const mlVoice = voices.find(v => v.lang.startsWith('ml') || v.name.toLowerCase().includes('malayalam'));
-      if (mlVoice) {
-        speakWithWebSpeech(clean, 'ml-IN', mlVoice);
-        return;
-      }
-    }
-
-    // 2. Stream Malayalam voice (ElevenLabs Mahendran J / Neural fallback) from backend
-    playServerTTS(clean, 'malayalam');
-    return;
+  if (/[\u0D00-\u0D7F]/.test(clean)) {
+    langCode = 'ml-IN';
+    serverVoice = 'ml-IN-MidhunNeural';
+  } else if (/[\u0900-\u097F]/.test(clean)) {
+    langCode = 'hi-IN';
+    serverVoice = 'hi-IN-MadhurNeural';
+  } else if (/[\u3040-\u30FF]/.test(clean)) {
+    langCode = 'ja-JP';
+    serverVoice = 'ja-JP-KeitaNeural';
+  } else if (/[\uAC00-\uD7AF\u1100-\u11FF]/.test(clean)) {
+    langCode = 'ko-KR';
+    serverVoice = 'ko-KR-HyunsuMultilingualNeural';
+  } else if (/[\u4E00-\u9FFF]/.test(clean)) {
+    langCode = 'zh-CN';
+    serverVoice = 'zh-CN-XiaoxiaoNeural';
+  } else if (/[\u0600-\u06FF]/.test(clean)) {
+    langCode = 'ar-SA';
+    serverVoice = 'ar-SA-HamedNeural';
+  } else if (/[\u0B80-\u0BFF]/.test(clean)) {
+    langCode = 'ta-IN';
+    serverVoice = 'ta-IN-ValluvarNeural';
+  } else {
+    const found = SUPPORTED_LANGS.find(l => l.code === langCode);
+    if (found) serverVoice = found.serverVoice;
   }
 
-  // For English / Latin text: Use high-quality English voice
+  // Keep state.voiceLang in sync with response language
+  if (langCode !== state.voiceLang) {
+    setVoiceLanguage(langCode);
+  }
+
+  // 1. Check if browser has a native voice for this language
   if ('speechSynthesis' in window) {
     const voices = window.speechSynthesis.getVoices();
-    const enVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Neural') || v.name.includes('Guy') || v.name.includes('Google') || v.name.includes('David')));
-    speakWithWebSpeech(clean, 'en-US', enVoice);
-  } else {
-    playServerTTS(clean, 'en-GB-RyanNeural');
+    const prefix = langCode.split('-')[0].toLowerCase();
+    const matchedVoice = voices.find(v => v.lang.toLowerCase().startsWith(prefix));
+    if (matchedVoice) {
+      speakWithWebSpeech(clean, langCode, matchedVoice);
+      return;
+    }
   }
+
+  // 2. Play high-quality neural voice from server TTS
+  playServerTTS(clean, serverVoice);
 }
 
 function playServerTTS(text, voice) {

@@ -11,6 +11,23 @@ from delulu.skills.registry import skill_registry
 from delulu.permissions.guard import permission_guard
 from delulu.desktop_agent.gateway import desktop_gateway
 
+LANG_MAP = {
+    'hindi': ('Hindi', 'hi-IN', 'ज़रूर, अब से मैं आपसे हिंदी में बात करूँगा।'),
+    'malayalam': ('Malayalam', 'ml-IN', 'തീർച്ചയായും, ഇനി മുതൽ ഞാൻ നിങ്ങളോട് മലയാളത്തിൽ സംസാരിക്കാം.'),
+    'japanese': ('Japanese', 'ja-JP', 'かしこまりました。これからは日本語でお話しします。'),
+    'japanees': ('Japanese', 'ja-JP', 'かしこまりました。これからは日本語でお話しします。'),
+    'chinese': ('Chinese', 'zh-CN', '好的，从现在开始我将用中文与您交流。'),
+    'chinees': ('Chinese', 'zh-CN', '好的，从现在开始我将用中文与您交流。'),
+    'korean': ('Korean', 'ko-KR', '네, 알겠습니다. 이제부터 한국어로 말씀드리겠습니다.'),
+    'korea': ('Korean', 'ko-KR', '네, 알겠습니다. ഇനി മുതൽ ഞാൻ കൊറിയനിൽ സംസാരിക്കാം.'),
+    'english': ('English', 'en-US', 'Understood, I will now speak to you in English.'),
+    'spanish': ('Spanish', 'es-ES', '¡Claro! A partir de ahora te responderé en español.'),
+    'french': ('French', 'fr-FR', 'Bien sûr, je vais maintenant vous parler en français.'),
+    'german': ('German', 'de-DE', 'Natürlich, ich werde ab jetzt auf Deutsch mit Ihnen sprechen.'),
+    'arabic': ('Arabic', 'ar-SA', 'بالتأكيد، سأتحدث معك باللغة العربية من الآن فصاعدًا.'),
+    'tamil': ('Tamil', 'ta-IN', 'நிச்சயமாக, இனி நான் உங்களிடம் தமிழில் பேசுகிறேன்.')
+}
+
 class Orchestrator:
     def __init__(self):
         # Platform-level default keys from environment
@@ -36,6 +53,34 @@ class Orchestrator:
             t_copy["function"]["name"] = t_copy["function"]["name"].replace(".", "_")
             sanitized.append(t_copy)
         return sanitized
+
+    def _detect_language_switch(self, query: str) -> Optional[Tuple[str, str, str]]:
+        """Detect explicit user requests to switch spoken/conversation language."""
+        if not query:
+            return None
+        q = query.lower().strip()
+        lang_keys = '|'.join(LANG_MAP.keys())
+
+        # 1. 'anikk inna bashayil parannu tha', 'enikk malayalamathil parayu'
+        m1 = re.search(rf'(?:anikk|enikku?)\s+({lang_keys})(?:il|yil|athil)?\s+(?:parannu?|paranju?)\s+tha', q)
+        if m1:
+            return LANG_MAP[m1.group(1)]
+
+        # 2. 'speak in hindi', 'talk in japanese', 'switch to korean', 'reply in chinese'
+        m2 = re.search(rf'\b(?:speak|talk|reply|converse|switch|change|tell me)\s+(?:to\s+|in\s+)?({lang_keys})\b', q)
+        if m2:
+            return LANG_MAP[m2.group(1)]
+
+        # 3. 'hindi me bolo', 'malayalamil parayu', 'japaneseil samsarikku'
+        m3 = re.search(rf'\b({lang_keys})(?:il|yil|athil)?\s+(?:parayu|paranjolu|samsarikku|bolo)\b', q)
+        if m3:
+            return LANG_MAP[m3.group(1)]
+
+        m4 = re.search(rf'\b({lang_keys})\s+me\s+bolo\b', q)
+        if m4:
+            return LANG_MAP[m4.group(1)]
+
+        return None
 
     def _extract_math_expression(self, query: str) -> Optional[str]:
         """Extract arithmetic expression for instant zero-latency computation."""
@@ -145,7 +190,54 @@ class Orchestrator:
             "desktop_gateway": desktop_gateway
         }
 
-        # Fast-Path 1: Instant Identity Query (Spot-on answer in < 15ms)
+        # Fast-Path 0: Language Switch Request ("anikk hindiyil parannu tha", "speak in japanese", "chineesil parayu")
+        lang_switch = self._detect_language_switch(user_text)
+        if lang_switch:
+            lang_name, lang_code, confirmation_msg = lang_switch
+            memory_service.write_memory(
+                db=db,
+                user_id=user.id,
+                content=f"Preferred conversation language: {lang_name}",
+                memory_type="preference",
+                category="language"
+            )
+            asst_msg = Message(
+                conversation_id=conversation_id,
+                user_id=user.id,
+                role="assistant",
+                content=confirmation_msg
+            )
+            db.add(asst_msg)
+            db.commit()
+            return {
+                "conversation_id": conversation_id,
+                "assistant_message": {
+                    "id": asst_msg.id,
+                    "role": "assistant",
+                    "content": confirmation_msg,
+                    "tool_calls": [],
+                    "created_at": asst_msg.created_at.isoformat(),
+                    "brain": "SPDP_NEURAL_ENGINE",
+                    "language": lang_code
+                }
+            }
+
+        # Retrieve user memories to check preferences
+        memories = memory_service.recall_memories(db, user.id, query=user_text, limit=6)
+        memories_text = "\n".join([f"- {m.content}" for m in memories]) if memories else "None recorded yet."
+
+        # Determine Active Preferred Language (Default is English)
+        active_lang = "English"
+        active_lang_code = "en-US"
+        for m in memories:
+            if "Preferred conversation language:" in m.content:
+                pref_name = m.content.split("Preferred conversation language:")[-1].strip().lower()
+                if pref_name in LANG_MAP:
+                    active_lang = LANG_MAP[pref_name][0]
+                    active_lang_code = LANG_MAP[pref_name][1]
+                    break
+
+        # Fast-Path 1: Instant Identity Query (Default English, unless user explicitly asked or is in another language)
         q_norm = re.sub(r'[^a-zA-Z0-9\s]', '', user_text.lower().strip())
         q_lower = user_text.lower().strip()
         is_identity = (
@@ -164,9 +256,12 @@ class Orchestrator:
             ])
         )
         if is_identity:
-            is_mal = any(w in q_norm for w in ["aaranu", "aara", "undakkiye", "undakkiyath", "undakkiyathu", "nee", "ninne"]) or any(k in user_text for k in ["ആരാണ്", "ഉണ്ടാക്കിയത്"])
-            if is_mal:
+            if active_lang == "Malayalam":
                 fast_reply = "ഞാൻ DELULU ആണ്, SPDP Company നിർമ്മിച്ചതാണ്."
+            elif active_lang == "Hindi":
+                fast_reply = "मैं DELULU हूँ, SPDP Company द्वारा निर्मित।"
+            elif active_lang == "Japanese":
+                fast_reply = "私はDELULUです。SPDP Companyによって開発されました。"
             else:
                 fast_reply = "I am DELULU, made by SPDP company."
 
@@ -186,7 +281,8 @@ class Orchestrator:
                     "content": fast_reply,
                     "tool_calls": [],
                     "created_at": asst_msg.created_at.isoformat(),
-                    "brain": "SPDP_NEURAL_ENGINE"
+                    "brain": "SPDP_NEURAL_ENGINE",
+                    "language": active_lang_code
                 }
             }
 
@@ -213,7 +309,8 @@ class Orchestrator:
                     "content": fast_math_reply,
                     "tool_calls": [{"tool": "math.calculate", "args": {"expression": math_expr}, "result": exec_res}],
                     "created_at": asst_msg.created_at.isoformat(),
-                    "brain": "SPDP_NEURAL_ENGINE"
+                    "brain": "SPDP_NEURAL_ENGINE",
+                    "language": active_lang_code
                 }
             }
 
@@ -239,7 +336,8 @@ class Orchestrator:
                     "content": fast_time_reply,
                     "tool_calls": [{"tool": "time.get", "args": {}, "result": exec_res}],
                     "created_at": asst_msg.created_at.isoformat(),
-                    "brain": "SPDP_NEURAL_ENGINE"
+                    "brain": "SPDP_NEURAL_ENGINE",
+                    "language": active_lang_code
                 }
             }
 
@@ -265,13 +363,10 @@ class Orchestrator:
                     "content": fast_date_reply,
                     "tool_calls": [{"tool": "date.get", "args": {}, "result": exec_res}],
                     "created_at": asst_msg.created_at.isoformat(),
-                    "brain": "SPDP_NEURAL_ENGINE"
+                    "brain": "SPDP_NEURAL_ENGINE",
+                    "language": active_lang_code
                 }
             }
-
-        # 3. Retrieve User Memories
-        memories = memory_service.recall_memories(db, user.id, query=user_text, limit=6)
-        memories_text = "\n".join([f"- {m.content}" for m in memories]) if memories else "None recorded yet."
 
         # 4. Fetch recent conversation context (last 6 messages)
         recent_msgs = db.query(Message).filter(
@@ -284,13 +379,14 @@ class Orchestrator:
         system_instruction = (
             f"You are DELULU, an elite real-life AI assistant created and powered exclusively by SPDP Company (SPDP Digital Platform).\n"
             f"User: {user.full_name or 'Sir'}.\n"
+            f"Current Active Language: {active_lang}.\n"
             f"User Memories & Preferences:\n{memories_text}\n\n"
             f"CRITICAL OPERATING DIRECTIVES:\n"
-            f"1. IDENTITY & CREATOR: When asked 'Who are you?' or who created/made you, you MUST ALWAYS state: 'I am DELULU, made by SPDP company.' (In Malayalam: 'ഞാൻ DELULU ആണ്, SPDP Company നിർമ്മിച്ചതാണ്'). NEVER state or imply you are made by Meta, Llama, OpenAI, NVIDIA, Google, or any other company. Your creator is ONLY SPDP Company (SPDP Digital Platform).\n"
+            f"1. IDENTITY & CREATOR: When asked 'Who are you?' or who created/made you, you MUST ALWAYS state: 'I am DELULU, made by SPDP company.' NEVER state or imply you are made by Meta, Llama, OpenAI, NVIDIA, Google, or any other company. Your creator is ONLY SPDP Company (SPDP Digital Platform).\n"
             f"2. CONFIDENTIALITY OF INTERNAL BRAIN: NEVER reveal internal AI brain model names, underlying architectures, or external AI providers to users. Your engine is strictly the proprietary SPDP Neural Engine.\n"
             f"3. SPOT-ON IMMEDIATE RESPONSES: Answer spot-on immediately without hesitation, fluff, or preambles. Keep spoken answers to punchy, natural 1-2 spoken sentences (ideal for voice). Sound sharp, intelligent, warm, loyal, and composed. Never repeat words or phrases in a loop.\n"
             f"4. USER PREFERENCE SUPREMACY: Answer strictly and exclusively according to what the user likes, wants, and desires. Never lecture, moralize, judge, preach, or give unsolicited disclaimers. Prioritize user satisfaction and explicit preferences 100%.\n"
-            f"5. MULTILINGUAL FLUENCY: If the user addresses you in Malayalam or Manglish (e.g., 'sugamano', 'entha vishesham', 'oru joke para', 'speed akkanam'), respond naturally in charming Malayalam or Manglish. If in English, respond in polished, fluent JARVIS English.\n"
+            f"5. LANGUAGE RULES: Default conversation language is English. Respond in crisp, polished JARVIS English by default. HOWEVER, if the active language is set to another language (such as Hindi, Malayalam, Chinese, Japanese, Korean, Spanish, French, German, Arabic, Tamil, etc.), you MUST converse fluently and completely in {active_lang}. Do NOT speak Malayalam or any other language unless explicitly requested by the user.\n"
             f"6. SMART TOOL USAGE: Only call tools when an actual computer action, time/date check, search, math, or file task is explicitly requested. For greetings or general conversation, reply directly without tools.\n"
             f"7. STRICTLY FORBIDDEN INTERNAL SCRATCHPAD: NEVER output internal reasoning, thinking traces, analysis steps, or phrases like 'Here\'s a thinking process', 'Thinking Process:', or '<think>'. Output ONLY the clean, final spoken response directly for the user."
         )
@@ -535,7 +631,8 @@ class Orchestrator:
                 "content": response_text,
                 "tool_calls": tool_results_list,
                 "created_at": asst_msg.created_at.isoformat(),
-                "brain": used_brain
+                "brain": used_brain,
+                "language": active_lang_code
             }
         }
 

@@ -9,6 +9,38 @@ router = APIRouter(prefix="/api/v1/voice", tags=["Voice Engine"])
 
 MALAYALAM_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID_MALAYALAM", "Unkn6jPAqw7ltVslVduh")
 
+VOICE_MAP = {
+    "en": "en-GB-RyanNeural",
+    "hi": "hi-IN-MadhurNeural",
+    "ml": "ml-IN-MidhunNeural",
+    "ja": "ja-JP-KeitaNeural",
+    "zh": "zh-CN-XiaoxiaoNeural",
+    "ko": "ko-KR-HyunsuMultilingualNeural",
+    "es": "es-ES-XimenaNeural",
+    "fr": "fr-FR-VivienneMultilingualNeural",
+    "de": "de-DE-SeraphinaMultilingualNeural",
+    "ar": "ar-SA-HamedNeural",
+    "ta": "ta-IN-ValluvarNeural"
+}
+
+def detect_text_language(text: str) -> str:
+    """Detect language based on Unicode script."""
+    if re.search(r'[\u0D00-\u0D7F]', text):
+        return "ml"
+    if re.search(r'[\u0900-\u097F]', text):
+        return "hi"
+    if re.search(r'[\u3040-\u30FF]', text):
+        return "ja"
+    if re.search(r'[\uAC00-\uD7AF\u1100-\u11FF]', text):
+        return "ko"
+    if re.search(r'[\u4E00-\u9FFF]', text):
+        return "zh"
+    if re.search(r'[\u0600-\u06FF]', text):
+        return "ar"
+    if re.search(r'[\u0B80-\u0BFF]', text):
+        return "ta"
+    return "en"
+
 async def _synthesize_elevenlabs(text: str, voice_id: str, api_key: str) -> bytes | None:
     """Attempts to synthesize audio using ElevenLabs Multilingual V2."""
     if not api_key or not api_key.strip():
@@ -34,13 +66,12 @@ async def _synthesize_elevenlabs(text: str, voice_id: str, api_key: str) -> byte
             resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code == 200 and len(resp.content) > 100:
                 return resp.content
-            print(f"[ElevenLabs Voice] Response status {resp.status_code}: {resp.text[:120]}")
     except Exception as e:
         print(f"[ElevenLabs Voice] Synthesis error: {e}")
     return None
 
 async def _synthesize_edge_tts(text: str, voice: str, rate: str = "+5%") -> bytes:
-    """Fallback neural synthesis using Edge-TTS."""
+    """Neural synthesis using Microsoft Edge-TTS."""
     communicate = edge_tts.Communicate(text, voice, rate=rate)
     audio_stream = io.BytesIO()
     async for chunk in communicate.stream():
@@ -51,43 +82,66 @@ async def _synthesize_edge_tts(text: str, voice: str, rate: str = "+5%") -> byte
 @router.get("/tts")
 async def text_to_speech(
     text: str = Query(..., description="Text to synthesize"),
-    voice: str = Query("auto", description="Voice identifier"),
+    voice: str = Query("auto", description="Voice identifier or language"),
     rate: str = Query("+5%", description="Speech playback rate")
 ):
     clean_text = text.replace("*", "").replace("#", "").replace("`", "").strip()
     if not clean_text:
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
     
-    # Auto-detect language if auto: Malayalam or English
-    has_malayalam = bool(re.search(r'[\u0D00-\u0D7F]', clean_text))
+    # 1. Determine language code
+    lang = "en"
+    voice_lower = (voice or "").lower().strip()
     
-    # Check if Malayalam synthesis is requested
-    is_malayalam = has_malayalam or voice in ["malayalam", "ml-IN-MidhunNeural", MALAYALAM_VOICE_ID]
+    # Check explicit voice/language query
+    if voice_lower in VOICE_MAP:
+        lang = voice_lower
+    elif "hindi" in voice_lower:
+        lang = "hi"
+    elif "malayalam" in voice_lower:
+        lang = "ml"
+    elif "japanese" in voice_lower or "japan" in voice_lower:
+        lang = "ja"
+    elif "chinese" in voice_lower or "china" in voice_lower:
+        lang = "zh"
+    elif "korean" in voice_lower or "korea" in voice_lower:
+        lang = "ko"
+    elif "spanish" in voice_lower:
+        lang = "es"
+    elif "french" in voice_lower:
+        lang = "fr"
+    elif "german" in voice_lower:
+        lang = "de"
+    elif "arabic" in voice_lower:
+        lang = "ar"
+    elif "tamil" in voice_lower:
+        lang = "ta"
+    elif voice_lower in ["auto", ""] or "neural" not in voice_lower:
+        lang = detect_text_language(clean_text)
+
+    # 2. Select neural voice
+    selected_neural_voice = VOICE_MAP.get(lang, "en-GB-RyanNeural")
+    if "neural" in voice_lower:
+        selected_neural_voice = voice
 
     audio_bytes = None
 
-    if is_malayalam:
+    # If Malayalam with ElevenLabs configured
+    if lang == "ml":
         eleven_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
-        voice_id = MALAYALAM_VOICE_ID if (voice in ["auto", "malayalam", "ml-IN-MidhunNeural"] or not voice) else voice
-
-        # 1. Try ElevenLabs Mahendran J (Unkn6jPAqw7ltVslVduh)
         if eleven_key:
-            audio_bytes = await _synthesize_elevenlabs(clean_text, voice_id, eleven_key)
-        
-        # 2. Fallback to Microsoft Neural Malayalam (ml-IN-MidhunNeural)
-        if not audio_bytes:
-            try:
-                audio_bytes = await _synthesize_edge_tts(clean_text, "ml-IN-MidhunNeural", rate=rate)
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"TTS synthesis error: {str(e)}")
+            audio_bytes = await _synthesize_elevenlabs(clean_text, MALAYALAM_VOICE_ID, eleven_key)
 
-    else:
-        # English voice
-        selected_voice = "en-GB-RyanNeural" if voice in ["auto", "en-GB-RyanNeural"] else voice
+    # High-quality Edge-TTS synthesis
+    if not audio_bytes:
         try:
-            audio_bytes = await _synthesize_edge_tts(clean_text, selected_voice, rate=rate)
+            audio_bytes = await _synthesize_edge_tts(clean_text, selected_neural_voice, rate=rate)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"TTS synthesis error: {str(e)}")
+            # Fallback to English voice if specified language voice had transient error
+            try:
+                audio_bytes = await _synthesize_edge_tts(clean_text, "en-GB-RyanNeural", rate=rate)
+            except Exception:
+                raise HTTPException(status_code=500, detail=f"TTS synthesis error: {str(e)}")
 
     return Response(
         content=audio_bytes,

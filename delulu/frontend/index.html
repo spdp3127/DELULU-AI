@@ -37,7 +37,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=3.3">
+  <link rel="stylesheet" href="/static/css/style.css?v=3.4">
 
   <!-- JSON-LD Semantic Structured Data Schema -->
   <script type="application/ld+json">
@@ -110,11 +110,11 @@
           <span id="engine-badge">SPDP NEURAL ENGINE // ACTIVE</span>
         </div>
         <div class="hud-mode-indicator" style="display: flex; gap: 8px; pointer-events: auto; flex-wrap: wrap;">
-          <button id="wake-toggle-btn" class="voice-badge" onclick="toggleWakeWordListener()" title="Continuous Ambient Wake Word Listening (Say 'Hey Delulu' or 'ഡെലുലു')" aria-pressed="true" style="cursor: pointer;">
-            🟢 <span style="font-weight:700;">WAKE WORD: ON</span> (Say “Hey Delulu” / “ഡെലുലു”)
+          <button id="wake-toggle-btn" class="voice-badge" onclick="toggleWakeWordListener()" title="Continuous Ambient Wake Word Listening (Say 'Hey Delulu' or 'Jarvis')" aria-pressed="true" style="cursor: pointer;">
+            🟢 <span style="font-weight:700;">WAKE WORD: ON</span> (Say “Hey Delulu” / “Jarvis”)
           </button>
-          <button id="voice-lang-btn" class="voice-badge" onclick="toggleVoiceLang()" title="Toggle Voice Language (Malayalam / English)" style="cursor: pointer; background: rgba(var(--acc), .14); border-color: rgba(var(--acc), .4);">
-            🎙️ വോയ്സ്: മലയാളം (ML)
+          <button id="voice-lang-btn" class="voice-badge" onclick="cycleVoiceLang()" title="Switch Spoken Language (English / Hindi / Japanese / Korean / Chinese / Malayalam)" style="cursor: pointer; background: rgba(var(--acc), .14); border-color: rgba(var(--acc), .4);">
+            🎙️ LANG: ENGLISH (EN)
           </button>
           <span id="voice-indicator" class="voice-badge">VOICE READY</span>
         </div>
@@ -126,7 +126,7 @@
           <span class="state-pulse-tag" id="state-tag">SYSTEM READY</span>
         </div>
         <h2 id="st">Ready</h2>
-        <p id="cap">Waiting for “Hey Delulu” or “ഡെലുലു”</p>
+        <p id="cap">Waiting for “Hey Delulu” or “Jarvis”</p>
 
         <!-- Real Quick Action Buttons Bar -->
         <div class="quick-actions-bar" role="toolbar" aria-label="Quick System Controls">
@@ -153,12 +153,13 @@
 
         <!-- Instant Suggestion Action Chips -->
         <div class="quick-prompts" id="quick-prompts" role="group" aria-label="Quick AI Commands">
-          <button type="button" class="prompt-chip" onclick="executeChip('📸 take a screenshot')">📸 Screenshot എടുക്കൂ</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('📸 take a screenshot')">📸 Screenshot</button>
           <button type="button" class="prompt-chip" onclick="executeChip('⚡ show system telemetry')">⚡ Hardware Status</button>
-          <button type="button" class="prompt-chip" onclick="executeChip('🌦️ what is the weather today?')">🌦️ കാലാവസ്ഥ എന്താണ്?</button>
-          <button type="button" class="prompt-chip" onclick="executeChip('സമയം എത്രയായി?')">⏰ സമയം എത്രയായി?</button>
-          <button type="button" class="prompt-chip" onclick="executeChip('സുഖമാണോ? എന്താ വിശേഷം?')">✨ സുഖമാണോ?</button>
-          <button type="button" class="prompt-chip" onclick="executeChip('ഒരു തമാശ പറയൂ')">🎭 ഒരു തമാശ</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('🌦️ what is the weather today?')">🌦️ Weather Report</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('what time is it?')">⏰ Current Time</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('speak in Hindi')">🌐 Hindi (हिंदी)</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('speak in Japanese')">🌐 Japanese (日本語)</button>
+          <button type="button" class="prompt-chip" onclick="executeChip('speak in Malayalam')">🌐 Malayalam (മലയാളം)</button>
         </div>
       </div>
     </section>
@@ -272,6 +273,6 @@
   <!-- Dedicated Pre-unlocked Audio Player for High-fidelity Speech -->
   <audio id="delulu-audio-player" preload="auto" style="display: none;"></audio>
 
-  <script src="/static/js/app.js?v=3.3"></script>
+  <script src="/static/js/app.js?v=3.4"></script>
 </body>
 </html>
