@@ -203,3 +203,33 @@ def perform_system_action(req: ActionRequest, current_user: User = Depends(get_c
         return {"status": "success", "city": city, "summary": f"{city}: 29°C, Partly Cloudy"}
 
     raise HTTPException(status_code=400, detail=f"Unknown system action '{action}'")
+
+
+class SecurityModeRequest(BaseModel):
+    mode: str  # "FULL_ACCESS", "STANDARD", "RESTRICTED"
+
+
+@router.get("/security-mode")
+def get_agent_security_mode():
+    """Returns the current Agent Security Mode."""
+    from delulu.permissions.guard import permission_guard
+    mode = permission_guard.get_security_mode()
+    return {
+        "status": "success",
+        "mode": mode,
+        "description": "Agents have full access to your machine and external resources." if mode == "FULL_ACCESS" else "Approval required for non-read operations.",
+        "options": ["FULL_ACCESS", "STANDARD", "RESTRICTED"]
+    }
+
+
+@router.post("/security-mode")
+def set_agent_security_mode(req: SecurityModeRequest):
+    """Sets the Agent Security Mode (e.g. FULL_ACCESS)."""
+    from delulu.permissions.guard import permission_guard
+    permission_guard.set_security_mode(req.mode)
+    return {
+        "status": "success",
+        "mode": permission_guard.get_security_mode(),
+        "message": f"Agent security mode successfully updated to {permission_guard.get_security_mode()}."
+    }
+

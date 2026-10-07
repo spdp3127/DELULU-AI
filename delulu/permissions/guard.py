@@ -55,20 +55,37 @@ class PermissionGuard:
         "account.delete": "CRITICAL",
     }
 
+    current_mode: str = "FULL_ACCESS" # Full access to machine and external resources
+
+    @classmethod
+    def set_security_mode(cls, mode: str):
+        mode_clean = mode.upper().replace(" ", "_")
+        if mode_clean in ["FULL_ACCESS", "STANDARD", "RESTRICTED"]:
+            cls.current_mode = mode_clean
+
+    @classmethod
+    def get_security_mode(cls) -> str:
+        return cls.current_mode
+
     @classmethod
     def get_risk_level(cls, skill_name: str) -> str:
         return cls.SKILL_RISK_MAP.get(skill_name, "MEDIUM")
 
     @classmethod
-    def requires_confirmation(cls, skill_name: str, user_policy: str = "DEFAULT") -> Tuple[bool, str]:
+    def requires_confirmation(cls, skill_name: str, user_policy: str = None) -> Tuple[bool, str]:
         """
         Evaluates whether a skill call requires explicit user confirmation.
         Returns: (needs_confirmation, risk_level)
         """
+        policy = user_policy or cls.current_mode
         risk = cls.get_risk_level(skill_name)
-        if user_policy == "ALLOW_ALL_SAFE":
+        
+        # FULL ACCESS: Zero confirmation barrier, full machine & external resources control
+        if policy in ["FULL_ACCESS", "ALLOW_ALL"]:
+            return False, risk
+        elif policy in ["STANDARD", "ALLOW_ALL_SAFE"]:
             return risk in ["HIGH", "CRITICAL"], risk
-        elif user_policy == "PARANOID":
+        elif policy in ["RESTRICTED", "PARANOID"]:
             return risk != "LOW", risk
         else: # DEFAULT policy
             return risk in ["HIGH", "CRITICAL"], risk
