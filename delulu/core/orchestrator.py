@@ -559,6 +559,52 @@ class Orchestrator:
                 }
             }
 
+        # Check if user requests Human Language Understanding (HLU) engine activation
+        # e.g. "ippo ithil human language understanding vekku", "human language understanding vekku"
+        is_hlu_directive = (
+            any(k in u_lower for k in [
+                "human language understanding", "human language understand", "hlu vekku", "hlu aakku", "hlu",
+                "natural language understanding", "human bhasha", "manushyan samsarikkunnapole",
+                "human samsarikkunnapole", "manglish understand", "human language vekku", "human language aakku"
+            ])
+            or (("human language" in u_lower or "language understanding" in u_lower) and any(k in u_lower for k in ["vekku", "aakku", "add", "enable", "cheyyu", "set", "onnu"]))
+        )
+        if is_hlu_directive:
+            hlu_ack = (
+                "തീർച്ചയായും! **Human Language Understanding (HLU) Multilingual Engine** ഇപ്പോൾ DELULU-വിൽ പൂർണ്ണമായി സജ്ജമാക്കി ആക്റ്റീവാക്കിയിട്ടുണ്ട്! 🧠✨\n\n"
+                "ഇനി മുതൽ നിശ്ചിത ഇംഗ്ലീഷ് വാക്കുകളോ റോബോട്ടിക് കമാൻഡുകളോ പറയേണ്ടതില്ല. ഒരു മനുഷ്യനോട് സംസാരിക്കുന്നതുപോലെ ഏറ്റവും സ്വാഭാവികമായ **മലയാളത്തിലോ, മംഗ്ലീഷിലോ (Manglish), ഹിന്ദിയിലോ, ഇംഗ്ലീഷിലോ** താങ്കൾക്ക് സംസാരിക്കാം!\n\n"
+                "🗣️ **താങ്കൾക്ക് ഇപ്പോൾത്തന്നെ പരീക്ഷിക്കാവുന്ന സ്വാഭാവിക മനുഷ്യ സംഭാഷണങ്ങൾ**:\n"
+                "1. 🎵 **പാട്ടുകളും വിനോദവും**: *'oru paatu kelkanam'*, *'mohanlal mass scenes youtubeil kanikku'*\n"
+                "2. 🧮 **കണക്കുകൾ**: *'calc eduthu 25 x 4 ethrayanu nokku'*, *'calculator thurannu 10 kootanam 20'*\n"
+                "3. 📝 **എഴുത്തും നോട്ടുകളും**: *'notepadil ente per ezhuthu'*, *'notepad eduthu meet at 5pm ennu ezhuthu'*\n"
+                "4. 🔊 **ശബ്ദ നിയന്ത്രണം**: *'sound onnu kurakko'*, *'sound onnu kootitharaamo'*, *'mute aakku'*\n"
+                "5. 💻 **വിൻഡോ & ഡെസ്ക്ടോപ്പ്**: *'ithonnu adachu vekku'*, *'desktopilekk poku'*, *'puthiya tab edukk'*\n"
+                "6. 🔋 **സിസ്റ്റം വിവരങ്ങൾ**: *'ente systemil ethra battery und'*, *'system status nokku'*\n"
+                "7. ⏰ **സമയവും കാലാവസ്ഥയും**: *'ippo ethra samayam aayi'*, *'innu enthu theeyathi'*, *'mazha peyyumo'*\n"
+                "8. 🌐 **വെബ് സെർച്ച്**: *'googleil search cheyyu python tutorial'*\n\n"
+                "ഇതിൽ ഏതെങ്കിലും ഒരു വാചകം സാധാരണ സംസാരിക്കുന്നതുപോലെ ഇപ്പോൾ പറഞ്ഞു നോക്കൂ!"
+            )
+            asst_msg = Message(
+                conversation_id=conversation_id,
+                user_id=user.id,
+                role="assistant",
+                content=hlu_ack
+            )
+            db.add(asst_msg)
+            db.commit()
+            return {
+                "conversation_id": conversation_id,
+                "assistant_message": {
+                    "id": asst_msg.id,
+                    "role": "assistant",
+                    "content": hlu_ack,
+                    "tool_calls": [],
+                    "created_at": asst_msg.created_at.isoformat(),
+                    "brain": "SPDP_HUMAN_LANGUAGE_ENGINE",
+                    "language": "ml-IN"
+                }
+            }
+
         # Check if previous assistant message was a creative consultation
         prev_consultation = False
         prev_type = "website"

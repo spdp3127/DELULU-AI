@@ -192,9 +192,48 @@ class RhasspyNLUEngine:
                 text=clean_text
             )
 
-        # 2. Compound Open Platform and Search Query:
-        # e.g. "open youtube and search mr beast", "search mr beast on youtube", "open google and search python"
-        # Malayalam: "യൂട്യൂബ് തുറന്ന് mr beast തിരയൂ", "യൂട്യൂബിൽ mr beast സെർച്ച് ചെയ്യൂ"
+        # 2. Compound Open Platform and Search Query / Music Listening:
+        # e.g. "open youtube and search mr beast", "search mr beast on youtube", "oru paatu kelkanam", "mohanlal mass scenes youtubeil kanikku"
+        # Malayalam: "യൂട്യൂബ് തുറന്ന് mr beast തിരയൂ", "യൂട്യൂബിൽ mr beast സെർച്ച് ചെയ്യൂ", "ഒരു പാട്ട് കേൾക്കണം"
+        
+        # Human music intent: "oru paatu kelkanam", "paatu idu", "song vekku", "play music", "ഒരു പാട്ട് വെയ്ക്കൂ"
+        m_music_generic = re.search(r'\b(?:oru\s+)?(?:paatu|paattu|song|music|gana)\s+(?:kelkanam|kelkkanam|kelkkan|idu|vekku|vekk|play|കേൾക്കണം|വെയ്ക്കൂ|പാടൂ)\b', q_cmd)
+        if m_music_generic:
+            prefix = re.sub(r'\b(?:oru\s+)?(?:paatu|paattu|song|music|gana)\s+.*', '', q_cmd).strip()
+            search_q = f"{prefix} song" if prefix and len(prefix) > 2 else "trending Malayalam and English songs"
+            return RhasspyIntent(
+                name="CompoundOpenAndSearch",
+                confidence=0.99,
+                slots={"platform": "youtube", "query": search_q},
+                text=clean_text
+            )
+
+        # Colloquial YouTube query: "mohanlal mass scenes youtubeil kanikku", "youtubeil search cheyyu python"
+        m_yt_colloquial = re.search(r'(?:youtubeil|യൂട്യൂബിൽ|youtube\s+il)\s+(?:onnu\s+)?(?:search\s+cheyyu|nokku|kaanikku|kanikku|തിരയൂ|കാണിക്കൂ|നോക്കൂ)\s+(.*)', q_cmd) or \
+                          re.search(r'(.*?)\s+(?:youtubeil|യൂട്യൂബിൽ|youtube\s+il)\s+(?:onnu\s+)?(?:search\s+cheyyu|nokku|kaanikku|kanikku|തിരയൂ|കാണിക്കൂ|നോക്കൂ|kaananam)', q_cmd)
+        if m_yt_colloquial:
+            search_q = re.sub(r'^(?:for|about)\s+', '', m_yt_colloquial.group(1)).strip()
+            if search_q:
+                return RhasspyIntent(
+                    name="CompoundOpenAndSearch",
+                    confidence=0.99,
+                    slots={"platform": "youtube", "query": search_q},
+                    text=clean_text
+                )
+
+        # Colloquial Google query: "googleil search cheyyu python tutorial", "python tutorial googleil nokku"
+        m_g_colloquial = re.search(r'(?:googleil|ഗൂഗിളിൽ|google\s+il)\s+(?:onnu\s+)?(?:search\s+cheyyu|nokku|thirayu|തിരയൂ|നോക്കൂ)\s+(.*)', q_cmd) or \
+                         re.search(r'(.*?)\s+(?:googleil|ഗൂഗിളിൽ|google\s+il)\s+(?:onnu\s+)?(?:search\s+cheyyu|nokku|thirayu|തിരയൂ|നോക്കൂ)', q_cmd)
+        if m_g_colloquial:
+            search_q = re.sub(r'^(?:for|about)\s+', '', m_g_colloquial.group(1)).strip()
+            if search_q:
+                return RhasspyIntent(
+                    name="CompoundOpenAndSearch",
+                    confidence=0.99,
+                    slots={"platform": "google", "query": search_q},
+                    text=clean_text
+                )
+
         m_comp_search = re.search(r'\b(?:open\s+|തുറന്ന്?\s+)?(youtube|google|യൂട്യൂബ്|യൂറ്റ്യൂബ്|ഗൂഗിൾ)\s+(?:and\s+|pinne\s+|ennitt\s+)?(?:search|തിരയൂ|സെർച്ച്\s+ചെയ്യു|സെർച്ച്)\s+(?:for\s+)?(.*)', q_cmd)
         m_search_on = re.search(r'\b(?:search|തിരയൂ|സെർച്ച്)\s+(?:for\s+)?(.*?)\s+(?:on|in|യിൽ|ഇൽ)\s+(youtube|google|യൂട്യൂബ്|യൂറ്റ്യൂബ്|ഗൂഗിൾ)\b', q_cmd)
         if m_comp_search or m_search_on:
@@ -209,7 +248,19 @@ class RhasspyNLUEngine:
             )
 
         # 3. Compound Open App and Type/Write Text:
-        # e.g. "open notepad and write hello world", "open notepad and type welcome", "notepad thurannu ith ezhuthu ..."
+        # e.g. "open notepad and write hello world", "notepadil my name is deva ennu ezhuthu", "notepad eduthu hello world type cheyyu"
+        m_comp_type_colloquial = re.search(r'\b(?:notepadil|notepad\s+eduthu|നോട്ട്പാഡിൽ)\s+(?:onnu\s+)?(?:type\s+cheyyu|write|ezhuthu|type|എഴുതൂ|ടൈപ്പ്\s+ചെയ്യു)?\s*:?\s*(.*?)(?:\s+ennu\s+ezhuthu|\s+ezhuthu|\s+type\s+cheyyu)?$', q_cmd, re.IGNORECASE)
+        if m_comp_type_colloquial and m_comp_type_colloquial.group(1).strip():
+            t_text = m_comp_type_colloquial.group(1).strip()
+            t_text = re.sub(r'^(?:ith|this)\s+', '', t_text).strip()
+            if t_text:
+                return RhasspyIntent(
+                    name="CompoundOpenAndType",
+                    confidence=0.99,
+                    slots={"app_name": "notepad", "text": t_text},
+                    text=clean_text
+                )
+
         m_comp_type = re.search(r'\b(?:open\s+|തുറന്ന്?\s+)?([a-zA-Z0-9\u0D00-\u0D7F]+)\s+(?:and\s+|ennitt\s+|pinne\s+)?(?:type|write|ezhuthu|type\s+cheyyu|എഴുതൂ|ടൈപ്പ്\s+ചെയ്യു)\s*:?\s*(.+)', q_cmd, re.IGNORECASE)
         if m_comp_type and not any(k in q_cmd for k in ["calculate", "claculate", "search"]):
             t_app = m_comp_type.group(1).strip()
@@ -225,32 +276,39 @@ class RhasspyNLUEngine:
 
         # --- HUMAN OPERATOR ACTIONS ---
         # A. Desktop & Window Management
-        # "show desktop", "minimize all", "desktop kanikku", "ഡെസ്ക്ടോപ്പ് കാണിക്ക്"
-        if any(w in q_cmd for w in ["show desktop", "minimize all", "go to desktop", "desktop kanikku", "ഡെസ്ക്ടോപ്പ്", "ഡെസ്ക്ടോപ്പ് കാണിക്ക്", "ഡെസ്ക്ടോപ്പ് കാണിക്കൂ"]):
+        # "show desktop", "desktopilekk poku", "ellam minimize cheyyu", "desktop kanikku", "ഡെസ്ക്ടോപ്പ് കാണിക്ക്", "ഡെസ്ക്ടോപ്പിലേക്ക് പോകൂ"
+        if any(w in q_cmd for w in [
+            "show desktop", "minimize all", "go to desktop", "desktopilekk poku", "desktopilek poku",
+            "ellam minimize cheyyu", "desktop kanikku", "desktop kaanikku", "ഡെസ്ക്ടോപ്പ്", "ഡെസ്ക്ടോപ്പ് കാണിക്ക്", "ഡെസ്ക്ടോപ്പ് കാണിക്കൂ", "ഡെസ്ക്ടോപ്പിലേക്ക് പോകൂ"
+        ]):
             return RhasspyIntent(name="WindowAction", confidence=0.99, slots={"action": "show_desktop"}, text=clean_text)
 
-        # "switch window", "alt tab", "window mathu", "വിൻഡോ മാറ്റൂ", "അടുത്ത വിൻഡോ"
-        if any(w in q_cmd for w in ["switch window", "alt tab", "next window", "window mathu", "വിൻഡോ മാറ്റൂ", "അടുത്ത വിൻഡോ"]):
+        # "switch window", "alt tab", "window mathu", "window maathu", "adutha window", "വിൻഡോ മാറ്റൂ", "അടുത്ത വിൻഡോ"
+        if any(w in q_cmd for w in ["switch window", "alt tab", "next window", "window mathu", "window maathu", "adutha window", "വിൻഡോ മാറ്റൂ", "അടുത്ത വിൻഡോ"]):
             return RhasspyIntent(name="WindowAction", confidence=0.98, slots={"action": "switch"}, text=clean_text)
 
-        # "close window", "close this window", "വിൻഡോ ക്ലോസ് ചെയ്യൂ"
-        if any(w in q_cmd for w in ["close window", "close this window", "close active window", "window close cheyyu", "വിൻഡോ ക്ലോസ് ചെയ്യൂ"]) or q_cmd in ["close this", "close it"]:
+        # "close window", "ithonnu adachu vekku", "window adakku", "ith adakku", "ith adachu vekku", "വിൻഡോ ക്ലോസ് ചെയ്യൂ", "വിൻഡോ അടയ്ക്കൂ"
+        if any(w in q_cmd for w in [
+            "close window", "close this window", "close active window", "window close cheyyu",
+            "ithonnu adachu vekku", "window adakku", "ith adakku", "ith adachu vekku", "close aakku",
+            "വിൻഡോ ക്ലോസ് ചെയ്യൂ", "വിൻഡോ അടയ്ക്കൂ", "ഇത് അടയ്ക്കൂ", "ഇത് ക്ലോസ് ചെയ്യൂ"
+        ]) or q_cmd in ["close this", "close it", "അടയ്ക്കൂ"]:
             return RhasspyIntent(name="WindowAction", confidence=0.98, slots={"action": "close"}, text=clean_text)
 
-        # "new tab", "open new tab", "പുതിയ ടാബ്"
-        if any(w in q_cmd for w in ["new tab", "open new tab", "പുതിയ ടാബ്"]):
+        # "new tab", "puthiya tab edukk", "fresh tab edukk", "new tab thura", "പുതിയ ടാബ്"
+        if any(w in q_cmd for w in ["new tab", "open new tab", "puthiya tab edukk", "fresh tab edukk", "new tab thura", "പുതിയ ടാബ്", "പുതിയ ടാബ് തുറക്കൂ"]):
             return RhasspyIntent(name="WindowAction", confidence=0.98, slots={"action": "new_tab"}, text=clean_text)
 
-        # "close tab", "ടാബ് ക്ലോസ് ചെയ്യൂ"
-        if any(w in q_cmd for w in ["close tab", "close this tab", "tab close cheyyu", "ടാബ് ക്ലോസ് ചെയ്യൂ"]):
+        # "close tab", "tab close cheyyu", "tab adakku", "ടാബ് ക്ലോസ് ചെയ്യൂ", "ടാബ് അടയ്ക്കൂ"
+        if any(w in q_cmd for w in ["close tab", "close this tab", "tab close cheyyu", "tab adakku", "ടാബ് ക്ലോസ് ചെയ്യൂ", "ടാബ് അടയ്ക്കൂ"]):
             return RhasspyIntent(name="WindowAction", confidence=0.98, slots={"action": "close_tab"}, text=clean_text)
 
         # B. Mouse Scrolling & Clicking
-        # "scroll down", "thazhekk scroll cheyyu", "താഴേക്ക് സ്ക്രോൾ ചെയ്യൂ"
-        if any(w in q_cmd for w in ["scroll down", "thazhekk scroll", "താഴേക്ക് സ്ക്രോൾ", "സ്ക്രോൾ ഡൗൺ"]):
+        # "scroll down", "thazhekk poku", "thazhekk scroll cheyyu", "താഴേക്ക് സ്ക്രോൾ ചെയ്യൂ"
+        if any(w in q_cmd for w in ["scroll down", "thazhekk scroll", "thazhekk poku", "താഴേക്ക് സ്ക്രോൾ", "താഴേക്ക് പോകൂ", "സ്ക്രോൾ ഡൗൺ"]):
             return RhasspyIntent(name="MouseScroll", confidence=0.99, slots={"direction": "down", "clicks": 6}, text=clean_text)
-        # "scroll up", "mukalilekk scroll cheyyu", "മുകളിലേക്ക് സ്ക്രോൾ ചെയ്യൂ"
-        if any(w in q_cmd for w in ["scroll up", "mukalilekk scroll", "മുകളിലേക്ക് സ്ക്രോൾ", "സ്ക്രോൾ അപ്പ്"]):
+        # "scroll up", "mukalilekk poku", "mukalilekk scroll cheyyu", "മുകളിലേക്ക് സ്ക്രോൾ ചെയ്യൂ"
+        if any(w in q_cmd for w in ["scroll up", "mukalilekk scroll", "mukalilekk poku", "മുകളിലേക്ക് സ്ക്രോൾ", "മുകളിലേക്ക് പോകൂ", "സ്ക്രോൾ അപ്പ്"]):
             return RhasspyIntent(name="MouseScroll", confidence=0.99, slots={"direction": "up", "clicks": 6}, text=clean_text)
 
         # C. Direct Keyboard Typing
@@ -338,24 +396,35 @@ class RhasspyNLUEngine:
                 slots={"volume": vol_val},
                 text=clean_text
             )
-        if any(w in q_cmd for w in ["mute", "silence sound", "mute volume", "sound mute cheyyu", "മ്യൂട്ട്", "മ്യൂട്ട് ചെയ്യൂ", "म्यूट करो"]):
+        if any(w in q_cmd for w in [
+            "mute", "silence sound", "mute volume", "sound mute cheyyu", "sound mute aakku", "mute aakku", "mute cheyyu",
+            "shabdam off aakku", "ശബ്ദം ഓഫ് ചെയ്യൂ", "മ്യൂട്ട്", "മ്യൂട്ട് ചെയ്യൂ", "म्यूट करो"
+        ]):
             return RhasspyIntent(
                 name="ChangeVolume",
-                confidence=0.95,
+                confidence=0.98,
                 slots={"volume": 0},
                 text=clean_text
             )
-        if any(w in q_cmd for w in ["volume kootu", "volume koottu", "sound koottu", "volume increase", "turn up volume", "വോളിയം കൂട്ടൂ", "ശബ്ദം കൂട്ടൂ", "आवाज़ बढ़ाओ"]):
+        if any(w in q_cmd for w in [
+            "volume kootu", "volume koottu", "sound koottu", "sound kootu",
+            "sound onnu kootu", "sound onnu kootitharaamo", "sound kurachu kootu", "sound kurach kootu",
+            "volume increase", "turn up volume", "raise sound", "വോളിയം കൂട്ടൂ", "ശബ്ദം കൂട്ടൂ", "ആവാസ് ബഢാവോ", "आवाज़ बढ़ाओ"
+        ]):
             return RhasspyIntent(
                 name="ChangeVolume",
-                confidence=0.95,
+                confidence=0.98,
                 slots={"volume": 80},
                 text=clean_text
             )
-        if any(w in q_cmd for w in ["volume kura", "volume kurakku", "sound kurakku", "volume decrease", "turn down volume", "വോളിയം കുറയ്ക്കൂ", "ശബ്ദം കുറയ്ക്കൂ", "आवाज़ कम करो"]):
+        if any(w in q_cmd for w in [
+            "volume kura", "volume kurakku", "sound kurakku", "sound onnu kurakko", "sound onnu kura", "sound kurakko",
+            "shabdam kooduthalanu kurakku", "shabdam kurakku", "volume decrease", "turn down volume", "lower sound",
+            "വോളിയം കുറയ്ക്കൂ", "ശബ്ദം കുറയ്ക്കൂ", "ആവാസ് കം കരോ", "आवाज़ कम करो"
+        ]):
             return RhasspyIntent(
                 name="ChangeVolume",
-                confidence=0.95,
+                confidence=0.98,
                 slots={"volume": 30},
                 text=clean_text
             )
@@ -363,7 +432,8 @@ class RhasspyNLUEngine:
         # C. Take Screenshot
         if any(w in q_cmd for w in [
             "screenshot", "screen shot", "snapshot", "capture screen",
-            "screenshot edukk", "screenshot eduthu tha", "സ്ക്രീൻഷോട്ട്", "സ്ക്രീൻഷോട്ട് എടുക്കൂ", "സ്ക്രീൻഷോട്ട് എടുക്കുക", "स्क्रीनशॉट लो"
+            "oru screenshot edukk", "screenshot edukk", "screenshot eduthu tha", "screen capture cheyyu", "photo edukk",
+            "സ്ക്രീൻഷോട്ട്", "സ്ക്രീൻഷോട്ട് എടുക്കൂ", "സ്ക്രീൻഷോട്ട് എടുക്കുക", "സ്ക്രീൻഷോട്ട് എടുക്ക്", "स्क्रीनशॉट लो"
         ]):
             return RhasspyIntent(
                 name="TakeScreenshot",
@@ -375,7 +445,8 @@ class RhasspyNLUEngine:
         # D. Lock Screen
         if any(w in q_cmd for w in [
             "lock screen", "lock the screen", "lock pc", "lock computer", "lock workstation",
-            "screen lock cheyyu", "pc lock cheyyu", "സ്ക്രീൻ ലോക്ക് ചെയ്യൂ", "കമ്പ്യൂട്ടർ ലോക്ക് ചെയ്യൂ", "स्क्रीन लॉक करो"
+            "screen onnu lock aakku", "screen lock cheyyu", "pc lock cheyyu", "pc poottu", "system lock cheyyu",
+            "സ്ക്രീൻ ലോക്ക് ചെയ്യൂ", "കമ്പ്യൂട്ടർ ലോക്ക് ചെയ്യൂ", "സ്ക്രീൻ പൂട്ട്", "കമ്പ്യൂട്ടർ പൂട്ട്", "स्क्रीन लॉक करो"
         ]):
             return RhasspyIntent(
                 name="LockScreen",
@@ -386,12 +457,13 @@ class RhasspyNLUEngine:
 
         # E. System Telemetry
         if any(w in q_cmd for w in [
-            "telemetry", "hardware status", "system status", "cpu usage", "ram usage", "battery level", "system info",
-            "ഹാർഡ്വെയർ", "സിസ്റ്റം സ്റ്റാറ്റസ്"
+            "telemetry", "hardware status", "system status", "cpu usage", "ram usage", "battery level",
+            "battery ethra und", "ente systemil ethra battery und", "battery status nokku", "battery percentage",
+            "system info", "ഹാർഡ്വെയർ", "സിസ്റ്റം സ്റ്റാറ്റസ്", "ബാറ്ററി എത്രയുണ്ട്"
         ]):
             return RhasspyIntent(
                 name="SystemTelemetry",
-                confidence=0.95,
+                confidence=0.98,
                 slots={},
                 text=clean_text
             )
@@ -399,8 +471,8 @@ class RhasspyNLUEngine:
         # F. Get Time (English, Malayalam, Hindi)
         time_triggers = [
             "what time is it", "what is the time", "current time", "tell me the time",
-            "samayam", "samayam ethrayayi", "samayam parayu", "ippol samayam",
-            "സമയം", "ഇപ്പോൾ സമയം", "സമയം എത്രയായി", "സമയം എത്ര", "സമയം പറയൂ",
+            "samayam", "samayam ethrayayi", "samayam enthayi", "ippo ethra samayam aayi", "time parayu", "ippol samayam",
+            "സമയം", "ഇപ്പോൾ സമയം", "സമയം എത്രയായി", "സമയം എത്ര", "സമയം പറയൂ", "സമയം എന്തായി",
             "समय क्या है", "कितने बजे हैं"
         ]
         if any(t in q_cmd for t in time_triggers) or q_cmd in ['time', 'clock', 'what time']:
@@ -414,8 +486,8 @@ class RhasspyNLUEngine:
         # G. Get Date (English, Malayalam, Hindi)
         date_triggers = [
             "what date is it", "what is the date", "what is today", "today's date", "todays date",
-            "theeyathi", "theeyathi parayu", "innathe theeyathi",
-            "തീയതി", "ഇന്നത്തെ തീയതി", "തിയതി", "ഇന്ന് എന്ത് തീയതി",
+            "theeyathi", "theeyathi parayu", "theeyathi entha", "innu enthu theeyathi", "innathe theeyathi",
+            "തീയതി", "ഇന്നത്തെ തീയതി", "തിയതി", "ഇന്ന് എന്ത് തീയതി", "തീയതി പറയൂ",
             "तारीख क्या है", "आज कौन सी तारीख है"
         ]
         if any(d in q_cmd for d in date_triggers) or q_cmd in ['date', 'today']:
@@ -446,7 +518,7 @@ class RhasspyNLUEngine:
                 )
 
         # I. Live Weather Query (Placed BEFORE Greeting/Identity)
-        if any(w in q_cmd for w in ["weather", "temperature", "climate", "kalavastha", "kaalavastha", "mazha", "കാലാവസ്ഥ", "മഴ", "मौसम"]):
+        if any(w in q_cmd for w in ["weather", "temperature", "climate", "kalavastha", "kaalavastha", "mazha", "mazha peyyumo", "veyl undo", "weather enganeyund", "കാലാവസ്ഥ", "മഴ", "മഴ പെയ്യുമോ", "കാലാവസ്ഥ എങ്ങനെയുണ്ട്", "मौसम"]):
             loc = "Kochi"
             loc_match = re.search(r'\b(?:in|at|for|of)\s+([a-zA-Z\s]+)', q_cmd)
             mal_loc_match = re.search(r'([a-zA-Z\u0D00-\u0D7F]+)(?:യിലെ|ലെ)?\s*(?:കാലാവസ്ഥ|മഴ|weather)', q_cmd)
