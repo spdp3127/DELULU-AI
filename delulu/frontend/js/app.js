@@ -402,15 +402,18 @@ function setupCommandBar() {
 
 let voiceEngine = null;
 let isVoiceEngineActive = localStorage.getItem('delulu_voice_active') !== 'false';
+let isVoiceEngineStarting = false;
+let isVoiceEngineRunning = false;
+let voiceWatchdog = null;
 let speechSilenceTimer = null;
 let currentSpokenCommand = '';
 
 const WAKE_WORDS = [
-  // English variations
+  // English variations & phonetic transcriptions from WebSpeech
   "hey delulu", "delulu", "hi delulu", "hello delulu", "ok delulu", "okay delulu", "hay delulu",
-  "hey de lulu", "de lulu", "the lulu", "hey the lulu", "dilulu", "hey dilulu", "day lulu",
-  "delu lu", "deluloo", "deloo loo", "deloo",
-  "hey jarvis", "jarvis", "ok jarvis", "hi jarvis",
+  "hey de lulu", "de lulu", "the lulu", "hey the lulu", "dilulu", "hey dilulu", "day lulu", "they lulu",
+  "delu lu", "deluloo", "deloo loo", "deloo", "da lulu", "tell lulu", "to lulu",
+  "hey jarvis", "jarvis", "ok jarvis", "hi jarvis", "hello jarvis",
   "hey gemini", "gemini", "ok gemini",
   // Malayalam script variations
   "ഹേ ഡെലുലു", "ഡെലുലു", "ഡിലുലു", "ദെലുലു", "ദിലുലു", "ഡീലുലു", "ലുലു",
@@ -510,25 +513,34 @@ function detectWakeWord(transcript) {
   return null;
 }
 
-// Single Persistent Unified Continuous Speech Engine
+// Single Persistent Unified Continuous Speech Engine with Lifetime Watchdog
 function startUnifiedVoiceEngine() {
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
     updateWakeWordUI(false);
     return;
   }
 
-  if (voiceEngine) {
-    return; // Already actively capturing
+  if (isVoiceEngineRunning || isVoiceEngineStarting) {
+    return;
   }
 
+  isVoiceEngineStarting = true;
+
   try {
+    if (voiceEngine) {
+      try { voiceEngine.abort(); } catch(e) {}
+      voiceEngine = null;
+    }
+
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     voiceEngine = new SpeechRec();
     voiceEngine.continuous = true;
     voiceEngine.interimResults = true;
-    voiceEngine.lang = state.voiceLang || 'ml-IN';
+    voiceEngine.lang = state.voiceLang || 'en-US';
 
     voiceEngine.onstart = () => {
+      isVoiceEngineStarting = false;
+      isVoiceEngineRunning = true;
       console.log("Unified Voice Engine Active. Language:", voiceEngine.lang);
       updateWakeWordUI(true);
     };
@@ -601,38 +613,45 @@ function startUnifiedVoiceEngine() {
           const capEl = $('cap');
           if (capEl) capEl.textContent = `🎙️ ${cleanText}`;
 
-          // Reset silence debounce (commits 1.3s after user finishes speaking)
+          // Reset silence debounce (commits 1.2s after user finishes speaking)
           clearTimeout(speechSilenceTimer);
           speechSilenceTimer = setTimeout(() => {
             commitVoiceCommand();
-          }, 1300);
+          }, 1200);
         }
       }
     };
 
     voiceEngine.onerror = (err) => {
+      isVoiceEngineStarting = false;
+      isVoiceEngineRunning = false;
       console.warn("Unified voice engine event:", err.error);
-      voiceEngine = null;
+      
       if (err.error === 'not-allowed') {
+        console.warn("Microphone access pending user gesture or permission grant.");
         updateWakeWordUI(false);
         return;
       }
-      // Auto-restart smoothly on transient network or silence timeouts
-      if (isVoiceEngineActive) {
+      
+      // Auto-restart smoothly on transient network, silence, or no-speech events
+      if (isVoiceEngineActive && err.error !== 'aborted') {
         setTimeout(() => {
-          if (isVoiceEngineActive && !voiceEngine && coreState !== 'SPEAKING') {
+          if (isVoiceEngineActive && !isVoiceEngineRunning && coreState !== 'SPEAKING') {
             startUnifiedVoiceEngine();
           }
-        }, 500);
+        }, 400);
       }
     };
 
     voiceEngine.onend = () => {
+      isVoiceEngineStarting = false;
+      isVoiceEngineRunning = false;
       voiceEngine = null;
-      // Seamlessly keep listening forever (Watchdog loop)
+
+      // Seamlessly keep listening forever in IDLE mode
       if (isVoiceEngineActive && coreState !== 'SPEAKING') {
         setTimeout(() => {
-          if (isVoiceEngineActive && !voiceEngine && coreState !== 'SPEAKING') {
+          if (isVoiceEngineActive && !isVoiceEngineRunning && coreState !== 'SPEAKING') {
             startUnifiedVoiceEngine();
           }
         }, 200);
@@ -641,8 +660,19 @@ function startUnifiedVoiceEngine() {
 
     voiceEngine.start();
   } catch (err) {
-    console.warn("Could not start unified voice engine:", err);
+    isVoiceEngineStarting = false;
+    isVoiceEngineRunning = false;
     voiceEngine = null;
+    console.warn("Could not start unified voice engine:", err);
+  }
+
+  // Ensure persistent watchdog is running to guarantee 100% uptime
+  if (!voiceWatchdog) {
+    voiceWatchdog = setInterval(() => {
+      if (isVoiceEngineActive && !isVoiceEngineRunning && !isVoiceEngineStarting && coreState === 'IDLE') {
+        startUnifiedVoiceEngine();
+      }
+    }, 2000);
   }
 }
 
@@ -666,12 +696,18 @@ function commitVoiceCommand() {
 // Master wake trigger (used by Ctrl+0, Canvas click, and Mic Button)
 function triggerWake() {
   cancelAssistantSpeech();
+  unlockAudioEngine();
   playGeminiWakeChime();
   pulse = 1;
   currentSpokenCommand = '';
   clearTimeout(speechSilenceTimer);
 
-  // Ensure voice engine is running
+  // If voice engine was disabled, enable it on user request
+  if (!isVoiceEngineActive) {
+    isVoiceEngineActive = true;
+    localStorage.setItem('delulu_voice_active', 'true');
+  }
+
   startUnifiedVoiceEngine();
 
   setCoreState('WAKE');
@@ -696,19 +732,22 @@ function toggleWakeWordListener() {
     isVoiceEngineActive = false;
     localStorage.setItem('delulu_voice_active', 'false');
     if (voiceEngine) {
-      try { voiceEngine.stop(); } catch(e){}
+      try { voiceEngine.abort(); } catch(e){}
       voiceEngine = null;
     }
+    isVoiceEngineRunning = false;
+    isVoiceEngineStarting = false;
     updateWakeWordUI(false);
   } else {
     isVoiceEngineActive = true;
     localStorage.setItem('delulu_voice_active', 'true');
+    unlockAudioEngine();
     startUnifiedVoiceEngine();
   }
 }
 
 function resumeWakeWordListener() {
-  if (isVoiceEngineActive && !voiceEngine && coreState === 'IDLE') {
+  if (isVoiceEngineActive && !isVoiceEngineRunning && !isVoiceEngineStarting && coreState === 'IDLE') {
     setTimeout(startUnifiedVoiceEngine, 200);
   }
 }
@@ -943,24 +982,13 @@ function speakText(text) {
     setVoiceLanguage(langCode);
   }
 
-  // 1. Check if browser has a native voice for this language
-  if ('speechSynthesis' in window) {
-    const voices = window.speechSynthesis.getVoices();
-    const prefix = langCode.split('-')[0].toLowerCase();
-    const matchedVoice = voices.find(v => v.lang.toLowerCase().startsWith(prefix));
-    if (matchedVoice) {
-      speakWithWebSpeech(clean, langCode, matchedVoice);
-      return;
-    }
-  }
-
-  // 2. Play high-quality neural voice from server TTS
-  playServerTTS(clean, serverVoice);
+  // Play high-quality neural voice from server TTS (with Web Speech fallback)
+  playServerTTS(clean, serverVoice, langCode);
 }
 
-function playServerTTS(text, voice) {
+function playServerTTS(text, voice, langCode = 'en-US') {
   const player = $('delulu-audio-player') || new Audio();
-  const url = `/api/v1/voice/tts?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(voice)}`;
+  const url = `${API_BASE}/api/v1/voice/tts?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(voice)}`;
   
   let safetyTimeout = setTimeout(() => {
     if (coreState === 'SPEAKING') setCoreState('IDLE');
@@ -974,7 +1002,7 @@ function playServerTTS(text, voice) {
   player.onerror = (e) => {
     clearTimeout(safetyTimeout);
     console.warn("Server TTS playback issue, falling back to Web Speech:", e);
-    speakWithWebSpeech(text, voice.startsWith('ml') ? 'ml-IN' : 'en-US');
+    speakWithWebSpeech(text, langCode);
   };
 
   const playPromise = player.play();
@@ -982,7 +1010,7 @@ function playServerTTS(text, voice) {
     playPromise.catch(err => {
       clearTimeout(safetyTimeout);
       console.warn("Audio autoplay blocked by browser, falling back:", err);
-      speakWithWebSpeech(text, voice.startsWith('ml') ? 'ml-IN' : 'en-US');
+      speakWithWebSpeech(text, langCode);
     });
   }
 }

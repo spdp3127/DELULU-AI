@@ -44,6 +44,12 @@ class RhasspySystemController:
             app_name = slots.get("app_name", "App")
             res = skill_registry.execute_skill("app.open", {"app_name": app_name}, context)
             tools_run.append({"tool": "app.open", "args": {"app_name": app_name}, "result": res})
+            if active_lang == "Malayalam":
+                return f"{app_name} ഇപ്പോൾ തുറന്നിരിക്കുന്നു.", tools_run, None
+            elif active_lang == "Hindi":
+                return f"{app_name} खोल दिया गया है।", tools_run, None
+            elif active_lang == "Japanese":
+                return f"{app_name} を開きました。", tools_run, None
             return f"A {app_name} window is now open.", tools_run, None
 
         # 2. Change System Volume
@@ -51,18 +57,36 @@ class RhasspySystemController:
             vol_level = slots.get("volume", 50)
             res = skill_registry.execute_skill("system.volume", {"level": vol_level}, context)
             tools_run.append({"tool": "system.volume", "args": {"level": vol_level}, "result": res})
+            if active_lang == "Malayalam":
+                return f"സിസ്റ്റം വോളിയം {vol_level}% ആക്കി മാറ്റിയുണ്ട്.", tools_run, None
+            elif active_lang == "Hindi":
+                return f"सिस्टम वॉल्यूम {vol_level}% कर दिया गया है।", tools_run, None
+            elif active_lang == "Japanese":
+                return f"音量を {vol_level}% に設定しました。", tools_run, None
             return f"System volume set to {vol_level}%.", tools_run, None
 
         # 3. Take Desktop Screenshot
         if name == "TakeScreenshot":
             res = skill_registry.execute_skill("system.screenshot", {}, context)
             tools_run.append({"tool": "system.screenshot", "args": {}, "result": res})
+            if active_lang == "Malayalam":
+                return "ഡെസ്ക്ടോപ്പ് സ്ക്രീൻഷോട്ട് സേവ് ചെയ്തു.", tools_run, None
+            elif active_lang == "Hindi":
+                return "स्क्रीनशॉट डेस्कटॉप पर सहेज लिया गया है।", tools_run, None
+            elif active_lang == "Japanese":
+                return "スクリーンショットを撮影しました。", tools_run, None
             return f"{res.get('result', 'Screenshot captured to Desktop.')}.", tools_run, None
 
         # 4. Lock Screen
         if name == "LockScreen":
             res = skill_registry.execute_skill("system.lock", {}, context)
             tools_run.append({"tool": "system.lock", "args": {}, "result": res})
+            if active_lang == "Malayalam":
+                return "സിസ്റ്റം സ്ക്രീൻ ലോക്ക് ചെയ്തു.", tools_run, None
+            elif active_lang == "Hindi":
+                return "वर्कस्टेशन स्क्रीन लॉक कर दी गई है।", tools_run, None
+            elif active_lang == "Japanese":
+                return "画面をロックしました。", tools_run, None
             return "Workstation screen locked.", tools_run, None
 
         # 5. Hardware Status & Telemetry
@@ -93,6 +117,8 @@ class RhasspySystemController:
                 return f"ഇന്ന് {date_val} ആണ്.", tools_run, None
             elif active_lang == "Hindi":
                 return f"आज {date_val} है।", tools_run, None
+            elif active_lang == "Japanese":
+                return f"本日は {date_val} です。", tools_run, None
             return f"Today is {date_val}.", tools_run, None
 
         # 8. Math Calculation
@@ -101,6 +127,10 @@ class RhasspySystemController:
             res = skill_registry.execute_skill("math.calculate", {"expression": expr}, context)
             res_str = res.get("result", expr)
             tools_run.append({"tool": "math.calculate", "args": {"expression": expr}, "result": res})
+            if active_lang == "Malayalam":
+                return f"{res_str} ആണ്.", tools_run, None
+            elif active_lang == "Hindi":
+                return f"{res_str} है।", tools_run, None
             return f"{res_str}.", tools_run, None
 
         # 9. Language Switch Request
@@ -150,6 +180,8 @@ class RhasspySystemController:
             weather_text = res.get("result", f"Weather data for {loc} retrieved.")
             if active_lang == "Malayalam":
                 return f"ഇന്നത്തെ കാലാവസ്ഥാ വിവരങ്ങൾ: {weather_text}", tools_run, None
+            elif active_lang == "Hindi":
+                return f"मौसम की जानकारी: {weather_text}", tools_run, None
             return f"{weather_text}", tools_run, None
 
         return f"Intent '{name}' processed successfully.", tools_run, None

@@ -37,7 +37,7 @@ class Orchestrator:
         self.default_openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
         openrouter_models_str = os.getenv(
             "OPENROUTER_MODELS",
-            "nvidia/nemotron-3.5-lightning:free,nvidia/nemotron-3-super-120b-a12b:free,nvidia/nemotron-3-ultra-550b-a55b:free"
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free,liquid/lfm-2.5-2.6b:free"
         )
         self.openrouter_models = [m.strip() for m in openrouter_models_str.split(",") if m.strip()]
         self.default_groq_key = os.getenv("GROQ_API_KEY", "").strip()
@@ -323,10 +323,17 @@ class Orchestrator:
         recent_msgs.reverse()
 
         # 5. Build Real-Life JARVIS System Instruction (Ultra-fast, voice-ready, strictly personalized)
+        now_dt = datetime.datetime.now()
+        current_time_str = now_dt.strftime("%I:%M:%S %p")
+        current_date_str = now_dt.strftime("%A, %B %d, %Y")
+
         system_instruction = (
             f"You are DELULU, an elite real-life AI assistant created and powered exclusively by SPDP Company (SPDP Digital Platform).\n"
             f"User: {user.full_name or 'Sir'}.\n"
             f"Current Active Language: {active_lang}.\n"
+            f"Current Local Time: {current_time_str}.\n"
+            f"Current Local Date: {current_date_str}.\n"
+            f"Current Timezone: IST (Indian Standard Time, Asia/Kolkata).\n"
             f"User Memories & Preferences:\n{memories_text}\n\n"
             f"CRITICAL OPERATING DIRECTIVES:\n"
             f"1. IDENTITY & CREATOR: When asked 'Who are you?' or who created/made you, you MUST ALWAYS state: 'I am DELULU, made by SPDP company.' NEVER state or imply you are made by Meta, Llama, OpenAI, NVIDIA, Google, or any other company. Your creator is ONLY SPDP Company (SPDP Digital Platform).\n"
@@ -369,7 +376,7 @@ class Orchestrator:
                     "max_tokens": 350,
                     "temperature": 0.7
                 }
-                r = requests.post(url, json=req_body, headers=headers, timeout=5)
+                r = requests.post(url, json=req_body, headers=headers, timeout=8)
                 if r.status_code == 200:
                     choice = r.json()["choices"][0]["message"]
                     if choice.get("tool_calls"):
@@ -394,7 +401,7 @@ class Orchestrator:
                             })
 
                         # Synthesize final response
-                        r2 = requests.post(url, json={"model": self.default_nvidia_model, "messages": messages_payload, "max_tokens": 350, "temperature": 0.7}, headers=headers, timeout=5)
+                        r2 = requests.post(url, json={"model": self.default_nvidia_model, "messages": messages_payload, "max_tokens": 350, "temperature": 0.7}, headers=headers, timeout=8)
                         if r2.status_code == 200:
                             response_text = self._sanitize_assistant_speech(r2.json()["choices"][0]["message"]["content"])
                     else:
@@ -542,7 +549,6 @@ class Orchestrator:
         # 4. Attempt Gemini if other models not used or failed
         if not response_text and gemini_key:
             try:
-                import requests
                 for m_id in ["gemini-2.0-flash", "gemini-1.5-flash"]:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_id}:generateContent?key={gemini_key}"
                     payload = {
