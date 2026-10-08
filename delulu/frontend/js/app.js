@@ -1018,8 +1018,9 @@ function speakText(text) {
     window.speechSynthesis.cancel();
   }
 
-  // Strip markdown symbols for clean speech
-  const clean = text.replace(/[*_#`[\]()]/g, '').trim();
+  // Strip code blocks and keep only spoken conversational text
+  const spokenOnly = (text || '').replace(/```[\s\S]*?```/g, '').trim();
+  const clean = spokenOnly.replace(/[*_#`[\]()]/g, '').trim();
   if (!clean) {
     setCoreState('IDLE');
     return;
@@ -1120,7 +1121,70 @@ function speakWithWebSpeech(text, lang, voice = null) {
   window.speechSynthesis.speak(utter);
 }
 
-// --- 7. HISTORY FEED MANAGEMENT ---
+// --- 7. HISTORY FEED MANAGEMENT & CODE FORMATTING ---
+function formatAssistantMessage(text) {
+  if (!text) return '';
+
+  const codeBlocks = [];
+  let formatted = text.replace(/```([a-zA-Z0-9_\-]+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+    const idx = codeBlocks.length;
+    const cleanLang = (lang || 'code').toUpperCase();
+    const codeId = `code-block-${Date.now()}-${idx}`;
+    const escapedCode = escapeHtml(code.trim());
+
+    codeBlocks.push(`
+      <div class="code-container" style="margin: 12px 0; background: #07090e; border: 1px solid rgba(61, 232, 255, 0.25); border-radius: 8px; overflow: hidden; text-align: left;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.75rem; color: #94a3b8; font-family: monospace;">
+          <span>⚡ ${cleanLang}</span>
+          <button onclick="copyCodeToClipboard('${codeId}')" style="background: rgba(61,232,255,0.18); border: 1px solid rgba(61,232,255,0.45); color: #fff; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 600;">Copy Code</button>
+        </div>
+        <pre id="${codeId}" style="margin: 0; padding: 12px; font-family: 'Consolas', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.5; color: #3de8ff; overflow-x: auto; max-height: 380px; white-space: pre;">${escapedCode}</pre>
+      </div>
+    `);
+    return `__CODE_BLOCK_${idx}__`;
+  });
+
+  // Escape normal content
+  formatted = escapeHtml(formatted);
+
+  // Markdown Bold
+  formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Markdown Inline Code
+  formatted = formatted.replace(/`([^`]+)`/g, '<code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85em; color: #3de8ff;">$1</code>');
+  // Newlines
+  formatted = formatted.replace(/\n/g, '<br>');
+
+  // Restore code blocks
+  codeBlocks.forEach((blockHtml, idx) => {
+    formatted = formatted.replace(`__CODE_BLOCK_${idx}__`, blockHtml);
+  });
+
+  return formatted;
+}
+
+function copyCodeToClipboard(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const text = el.innerText || el.textContent;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      alert("Code copied to clipboard!");
+    }).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  document.body.removeChild(ta);
+  alert("Code copied to clipboard!");
+}
+
 function appendHistoryItem(role, text, meta = {}) {
   const feed = $('history-feed');
   if (!feed) return;
@@ -1142,11 +1206,11 @@ function appendHistoryItem(role, text, meta = {}) {
       </div>
     `;
   } else {
-    const escaped = escapeHtml(text);
+    const formattedHtml = formatAssistantMessage(text);
     const toolHtml = meta.tool ? `<div class="tool-tag">⚡ Tool: ${escapeHtml(meta.tool)}</div>` : '';
     item.innerHTML = `
       <div class="bubble">
-        <div>${escaped}</div>
+        <div>${formattedHtml}</div>
         ${toolHtml}
       </div>
       <div class="history-meta">

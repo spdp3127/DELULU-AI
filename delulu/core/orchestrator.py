@@ -124,6 +124,78 @@ class Orchestrator:
             return False
         return bool(re.search(r'\b(?:what\s+(?:is\s+the\s+)?date|what\s+date\s+is\s+it|today[\'’]?s?\s+date|what\s+is\s+today|theeyathi)\b', q) or q in ['date', 'today'])
 
+    def _is_delulu_choice(self, query: str) -> bool:
+        """Detect if user asks DELULU to decide or choose according to DELULU's choice."""
+        if not query:
+            return False
+        q = query.lower().strip()
+        patterns = [
+            r'\bdelulu(?:[\'\’]s)?\s*choice\b',
+            r'\byour\s*choice\b',
+            r'\byou\s*decide\b',
+            r'\bsurprise\s*me\b',
+            r'\bup\s*to\s*you\b',
+            r'\bas\s*you\s*(?:like|wish|prefer)\b',
+            r'\bwhatever\s*you\s*like\b',
+            r'\bdelulu\s*vinte\s*isht',
+            r'\bdeluluvinte\s*isht',
+            r'\bdelulu\s*ishtam\b',
+            r'\bishtam\s*pole\b',
+            r'\bdelulu\s*decide\b',
+            r'ഡെലുലുവിന്റെ\s*ഇഷ്ട',
+            r'നിന്റെ\s*ഇഷ്ട',
+            r'നിനക്ക്\s*ഇഷ്ട'
+        ]
+        return any(re.search(p, q) for p in patterns)
+
+    def _detect_creative_intent(self, query: str) -> Optional[str]:
+        """Detect if the query is a request to create/build a website, web app, or image/artwork."""
+        if not query:
+            return None
+        q = query.lower().strip()
+
+        web_keys = ["website", "web app", "landing page", "webpage", "portfolio", "വെബ്സൈറ്റ്", "വെബ്‌സൈറ്റ്"]
+        img_keys = ["image", "picture", "photo", "drawing", "artwork", "illustration", "svg", "vector", "ചിത്രം", "ഇമേജ്"]
+        make_keys = [
+            "create", "build", "make", "develop", "generate", "design", "craft",
+            "undakku", "undakkan", "undakkanam", "thayyarraku", "cheyyu",
+            "ഉണ്ടാക്കു", "ഉണ്ടാക്കുക", "നിർമ്മിക്കൂ", "തയ്യാറാക്കൂ"
+        ]
+
+        has_make = any(k in q for k in make_keys)
+        has_web = any(k in q for k in web_keys)
+        has_img = any(k in q for k in img_keys)
+
+        if has_web and (has_make or "oru website" in q or "a website" in q or "site undakku" in q):
+            return "website"
+        if has_img and (has_make or "oru image" in q or "an image" in q):
+            return "image"
+        return None
+
+    def _extract_topic_and_stack(self, text: str, default_topic: str = "Modern Digital Experience") -> Tuple[str, str]:
+        """Extract niche/topic and tech stack from user reply."""
+        t = text.strip()
+        t_lower = t.lower()
+
+        stack = "HTML5 / CSS3 / Vanilla JS (Glassmorphism & Responsive)"
+        if "react" in t_lower:
+            stack = "React.js & Modern Component Architecture"
+        elif "vue" in t_lower:
+            stack = "Vue.js & Dynamic Reactive Store"
+        elif "tailwind" in t_lower:
+            stack = "HTML5 & TailwindCSS Utility Styling"
+        elif "svg" in t_lower or "vector" in t_lower:
+            stack = "Scalable Vector Graphics (SVG 4K Ultra-Crisp)"
+        elif "html" in t_lower or "css" in t_lower:
+            stack = "HTML5 / Modern CSS3 / Vanilla JS"
+
+        clean = re.sub(r'\b(?:create|build|make|develop|generate|design|undakku|undakkan|undakkanam|cheyyu|oru|a|an|website|web app|landing page|image|picture|vector|in|with|using|for|delulu|vinte|ishtam|pole|choice|your|please)\b', '', t, flags=re.I).strip()
+        clean = re.sub(r'[\u0D00-\u0D7F]+', '', clean).strip()
+        clean = re.sub(r'\s+', ' ', clean).strip(' ,.-')
+
+        topic = clean.title() if (clean and len(clean) > 2) else default_topic
+        return topic, stack
+
     def _sanitize_assistant_speech(self, text: Optional[str]) -> str:
         """Strip internal thinking traces (<think> or Here's a thinking process) from model output."""
         if not text:
@@ -321,6 +393,255 @@ class Orchestrator:
             Message.user_id == user.id
         ).order_by(Message.created_at.desc()).limit(6).all()
         recent_msgs.reverse()
+
+        # Fast-Path Creative: Website & Artwork Builder Workflow
+        # (Consults user for Idea/Theme & Stack/Platform, or builds autonomously on DELULU's Choice)
+        is_choice = self._is_delulu_choice(user_text)
+        creation_type = self._detect_creative_intent(user_text)
+        u_lower = user_text.lower()
+
+        # Check if user is explaining/confirming the creative directive
+        is_directive_def = (
+            ("undakkan parannal" in u_lower or "chodikkum" in u_lower or "generate akki kodukkanam" in u_lower)
+            and ("website" in u_lower or "image" in u_lower)
+        )
+        if is_directive_def:
+            rule_ack = (
+                "തീർച്ചയായും! ക്ലയന്റോ യൂസറോ ഏതെങ്കിലും വെബ്‌സൈറ്റോ ഇമേജോ ഉണ്ടാക്കാൻ പറയുമ്പോൾ:\n\n"
+                "1. **Idea / Theme** എന്താണെന്നും\n"
+                "2. **ഏത് പ്ലാറ്റ്‌ഫോം / ടെക് സ്റ്റാക്കിൽ** നിന്നാണ് ഉണ്ടാക്കേണ്ടതെന്നും ഞാൻ ആദ്യം ചോദിക്കും.\n\n"
+                "അപ്പോൾ യൂസേഴ്സ് അവർക്ക് ആവശ്യമുള്ള സ്റ്റാക്ക്/ഐഡിയ പറഞ്ഞാലോ, അല്ലെങ്കിൽ **'DELULU-വിന്റെ ഇഷ്ടം' (Your Choice)** എന്ന് പറഞ്ഞാലോ, അവരുടെ കമാൻഡിന് അനുസരിച്ച് ഏറ്റവും മികച്ച വെബ്‌സൈറ്റും/ഇമേജും ഞാൻ ഉടൻ സ്വയം ജനറേറ്റ് ചെയ്ത് ബ്രൗസറിൽ ലൈവായി ഓപ്പൺ ആക്കി പൂർണ്ണ കോഡും നൽകുന്നതായിരിക്കും! ഈ സിസ്റ്റം പൂർണ്ണമായും ആക്റ്റീവ് ആണ്."
+            )
+            asst_msg = Message(
+                conversation_id=conversation_id,
+                user_id=user.id,
+                role="assistant",
+                content=rule_ack
+            )
+            db.add(asst_msg)
+            db.commit()
+            return {
+                "conversation_id": conversation_id,
+                "assistant_message": {
+                    "id": asst_msg.id,
+                    "role": "assistant",
+                    "content": rule_ack,
+                    "tool_calls": [],
+                    "created_at": asst_msg.created_at.isoformat(),
+                    "brain": "SPDP_CREATIVE_ENGINE",
+                    "language": "ml-IN"
+                }
+            }
+
+        # Check if previous assistant message was a creative consultation
+        prev_consultation = False
+        prev_type = "website"
+        prev_topic = None
+
+        if len(recent_msgs) >= 2:
+            last_asst_msg = None
+            for m in reversed(recent_msgs[:-1]):
+                if m.role == "assistant":
+                    last_asst_msg = m
+                    break
+
+            if last_asst_msg and ("Idea / Theme" in last_asst_msg.content or "DELULU-വിന്റെ ഇഷ്ടം" in last_asst_msg.content or "DELULU's choice" in last_asst_msg.content):
+                prev_consultation = True
+                # Detect prev_type and prev_topic directly from earlier user request
+                for m in reversed(recent_msgs[:-1]):
+                    if m.role == "user":
+                        c_t = self._detect_creative_intent(m.content)
+                        if c_t:
+                            prev_type = c_t
+                            cand_topic, _ = self._extract_topic_and_stack(m.content, default_topic="")
+                            if cand_topic and cand_topic != "Modern Digital Experience":
+                                prev_topic = cand_topic
+                            break
+
+        # Branch 1: User is responding to consultation OR requested creation with DELULU's choice
+        if prev_consultation or (creation_type and is_choice):
+            target_type = creation_type or prev_type or "website"
+            if is_choice:
+                topic = prev_topic or ("Cyberpunk Artisan Coffee & Roastery" if target_type == "website" else "Cybernetic Neural Core")
+                stack = "HTML5 / CSS3 / Vanilla JS (Glassmorphism & Responsive)"
+            else:
+                topic, stack = self._extract_topic_and_stack(user_text, default_topic=prev_topic or "Modern Digital Project")
+
+            tools_run = []
+            if target_type == "website":
+                res = skill_registry.execute_skill("website.generate", {
+                    "topic": topic,
+                    "theme": "delulu_choice" if is_choice else "custom",
+                    "tech_stack": stack
+                }, skill_context)
+                tools_run.append({"tool": "website.generate", "args": {"topic": topic, "tech_stack": stack}, "result": res})
+                res_data = res.get("result", {})
+                p_name = res_data.get("project_name", topic)
+                f_path = res_data.get("file_path", "")
+                html_c = res_data.get("html_code", "")
+
+                if active_lang == "Malayalam" or re.search(r'[\u0D00-\u0D7F]', user_text) or any(k in u_lower for k in ["ishtam", "cheyyu", "undakku"]):
+                    reply_text = (
+                        f"തീർച്ചയായും! നിങ്ങൾ ആവശ്യപ്പെട്ടതുപോലെ **{p_name}** വെബ്‌സൈറ്റ് ഞാൻ വിജയകരമായി നിർമ്മിച്ച് ബ്രൗസറിൽ ലൈവായി തുറന്നിട്ടുണ്ട്!\n\n"
+                        f"🚀 **Project Overview**:\n"
+                        f"- **Idea & Niche**: {p_name}\n"
+                        f"- **Design Concept**: Cyber-Glass Modern Dark Theme with Micro-Interactions\n"
+                        f"- **Tech Stack**: {stack}\n"
+                        f"- **Workspace Location**: `{f_path}`\n"
+                        f"- **Live Preview**: ബ്രൗസറിൽ ഓപ്പൺ ആയിട്ടുണ്ട്!\n\n"
+                        f"താഴെ നൽകിയിട്ടുള്ള പൂർണ്ണമായ സോഴ്സ് കോഡ് നിങ്ങൾക്ക് നേരിട്ട് ഉപയോഗിക്കാവുന്നതാണ്:\n\n"
+                        f"```html\n{html_c}\n```"
+                    )
+                else:
+                    reply_text = (
+                        f"Certainly! As requested, I have created a state-of-the-art responsive website for **{p_name}** using {stack} and launched the live preview in your default browser!\n\n"
+                        f"🚀 **Project Details**:\n"
+                        f"- **Concept & Niche**: {p_name}\n"
+                        f"- **Aesthetics**: Glassmorphism Dark Mode with Micro-Interactions & Responsive Layout\n"
+                        f"- **Tech Stack**: {stack}\n"
+                        f"- **Workspace File**: `{f_path}`\n"
+                        f"- **Live Preview**: Opened automatically in your browser!\n\n"
+                        f"Here is the complete production-grade source code:\n\n"
+                        f"```html\n{html_c}\n```"
+                    )
+            else:
+                res = skill_registry.execute_skill("image.generate", {
+                    "prompt": topic,
+                    "style": "delulu_choice" if is_choice else "custom"
+                }, skill_context)
+                tools_run.append({"tool": "image.generate", "args": {"prompt": topic}, "result": res})
+                res_data = res.get("result", {})
+                title = res_data.get("title", topic)
+                f_path = res_data.get("file_path", "")
+                svg_c = res_data.get("svg_code", "")
+
+                if active_lang == "Malayalam" or re.search(r'[\u0D00-\u0D7F]', user_text) or any(k in u_lower for k in ["ishtam", "cheyyu", "undakku"]):
+                    reply_text = (
+                        f"തീർച്ചയായും! നിങ്ങൾ ആവശ്യപ്പെട്ടതുപോലെ **{title}** ഇമേജ്/ആർട്ട്‌വർക്ക് ഞാൻ സ്വയം ജനറേറ്റ് ചെയ്ത് ബ്രൗസറിൽ തുറന്നിട്ടുണ്ട്!\n\n"
+                        f"🎨 **Artwork Overview**:\n"
+                        f"- **Subject & Idea**: {title}\n"
+                        f"- **Format**: Scalable Vector Graphics (SVG 4K Ultra-Crisp)\n"
+                        f"- **Workspace Location**: `{f_path}`\n"
+                        f"- **Live Preview**: ബ്രൗസറിൽ ഓപ്പൺ ആയിട്ടുണ്ട്!\n\n"
+                        f"```xml\n{svg_c}\n```"
+                    )
+                else:
+                    reply_text = (
+                        f"Certainly! I have synthesized the vector artwork for **{title}** and opened the live preview in your browser!\n\n"
+                        f"🎨 **Artwork Details**:\n"
+                        f"- **Subject**: {title}\n"
+                        f"- **Format**: SVG Vector Architecture (Ultra-Crisp HD)\n"
+                        f"- **Workspace File**: `{f_path}`\n"
+                        f"- **Live Preview**: Opened automatically in your browser!\n\n"
+                        f"```xml\n{svg_c}\n```"
+                    )
+
+            asst_msg = Message(
+                conversation_id=conversation_id,
+                user_id=user.id,
+                role="assistant",
+                content=reply_text,
+                tool_calls=json.dumps(tools_run)
+            )
+            db.add(asst_msg)
+            db.commit()
+            return {
+                "conversation_id": conversation_id,
+                "assistant_message": {
+                    "id": asst_msg.id,
+                    "role": "assistant",
+                    "content": reply_text,
+                    "tool_calls": tools_run,
+                    "created_at": asst_msg.created_at.isoformat(),
+                    "brain": "SPDP_CREATIVE_ENGINE",
+                    "language": active_lang_code
+                }
+            }
+
+        # Branch 2: Initial creation request without specific stack & without choice -> Ask Consultation
+        elif creation_type:
+            cand_topic, cand_stack = self._extract_topic_and_stack(user_text, default_topic="")
+            has_explicit_stack = any(k in u_lower for k in ["react", "vue", "tailwind", "html", "css", "svg"])
+            if cand_topic and has_explicit_stack:
+                tools_run = []
+                res = skill_registry.execute_skill("website.generate" if creation_type == "website" else "image.generate", {
+                    "topic": cand_topic,
+                    "theme": "custom",
+                    "tech_stack": cand_stack
+                }, skill_context)
+                tools_run.append({"tool": f"{creation_type}.generate", "args": {"topic": cand_topic, "tech_stack": cand_stack}, "result": res})
+                res_data = res.get("result", {})
+                p_name = res_data.get("project_name", cand_topic)
+                f_path = res_data.get("file_path", "")
+                html_c = res_data.get("html_code", "")
+
+                reply_text = (
+                    f"തീർച്ചയായും! നിങ്ങൾ ആവശ്യപ്പെട്ടതുപോലെ **{p_name}** വെബ്‌സൈറ്റ് ഞാൻ നിർമ്മിച്ച് ബ്രൗസറിൽ ലൈവായി തുറന്നിട്ടുണ്ട്!\n\n"
+                    f"🚀 **Project Details**:\n- **Niche**: {p_name}\n- **Stack**: {cand_stack}\n- **File**: `{f_path}`\n\n"
+                    f"```html\n{html_c}\n```"
+                ) if (active_lang == "Malayalam" or re.search(r'[\u0D00-\u0D7F]', user_text)) else (
+                    f"Certainly! I have generated the website for **{p_name}** using {cand_stack} and launched it in your browser!\n\n"
+                    f"🚀 **Project Details**:\n- **Niche**: {p_name}\n- **Stack**: {cand_stack}\n- **File**: `{f_path}`\n\n"
+                    f"```html\n{html_c}\n```"
+                )
+                asst_msg = Message(
+                    conversation_id=conversation_id,
+                    user_id=user.id,
+                    role="assistant",
+                    content=reply_text,
+                    tool_calls=json.dumps(tools_run)
+                )
+                db.add(asst_msg)
+                db.commit()
+                return {
+                    "conversation_id": conversation_id,
+                    "assistant_message": {
+                        "id": asst_msg.id,
+                        "role": "assistant",
+                        "content": reply_text,
+                        "tool_calls": tools_run,
+                        "created_at": asst_msg.created_at.isoformat(),
+                        "brain": "SPDP_CREATIVE_ENGINE",
+                        "language": active_lang_code
+                    }
+                }
+
+            # Otherwise, ask the 2-step consultation question!
+            if active_lang == "Malayalam" or re.search(r'[\u0D00-\u0D7F]', user_text) or any(k in u_lower for k in ["undakku", "cheyyu", "undakkanam", "parannal"]):
+                consultation_msg = (
+                    "തീർച്ചയായും! നിങ്ങൾക്കായി ഞാൻ പ്രൊജക്റ്റ് തയ്യാറാക്കാം. എനിക്ക് 2 കാര്യങ്ങൾ അറിയണം:\n\n"
+                    "1. **Idea / Theme**: ഏതു വിഷയത്തിലാണ് വെബ്‌സൈറ്റ് അല്ലെങ്കിൽ ഇമേജ് വേണ്ടത്? (ഉദാഹരണത്തിന്: Coffee Shop, Fitness & Gym, Tech Portfolio, Luxury Cars, Business...)\n"
+                    "2. **Platform / Tech Stack**: ഏതിൽ നിന്നാണ് ഉണ്ടാക്കേണ്ടത്? (ഉദാഹരണത്തിന്: HTML5/CSS3/Vanilla JS, React, SVG Vector...)\n\n"
+                    "👉 അല്ലെങ്കിൽ **'DELULU-വിന്റെ ഇഷ്ടം' (Your Choice)** എന്ന് പറഞ്ഞാൽ, ഏറ്റവും മികച്ച ആശയവും പ്രീമിയം ഡിസൈനും ഞാൻ തന്നെ സ്വയം തിരഞ്ഞെടുത്ത് ഉടൻ ലൈവായി നിർമ്മിച്ച് ബ്രൗസറിൽ തുറന്നു തരാം! നിങ്ങൾ ഏതാണ് ആഗ്രഹിക്കുന്നത്?"
+                )
+            else:
+                consultation_msg = (
+                    "I would love to create that for you! Before I begin, please let me know:\n\n"
+                    "1. **Idea & Theme**: What concept or niche would you like? (e.g., Coffee Shop, Fitness & Gym, Developer Portfolio, Luxury Automotive, SaaS)\n"
+                    "2. **Platform & Tech Stack**: Which format or tech stack should I build it with? (e.g., Modern HTML5/CSS3/Vanilla JS, React, SVG Vector)\n\n"
+                    "👉 Or, you can simply tell me **'DELULU's choice' / 'Your choice'**, and I will autonomously curate the idea, design an elite responsive website/artwork, and launch it live in your browser immediately! Which would you prefer?"
+                )
+
+            asst_msg = Message(
+                conversation_id=conversation_id,
+                user_id=user.id,
+                role="assistant",
+                content=consultation_msg
+            )
+            db.add(asst_msg)
+            db.commit()
+            return {
+                "conversation_id": conversation_id,
+                "assistant_message": {
+                    "id": asst_msg.id,
+                    "role": "assistant",
+                    "content": consultation_msg,
+                    "tool_calls": [],
+                    "created_at": asst_msg.created_at.isoformat(),
+                    "brain": "SPDP_CREATIVE_ENGINE",
+                    "language": active_lang_code
+                }
+            }
 
         # 5. Build Real-Life JARVIS System Instruction (Ultra-fast, voice-ready, strictly personalized)
         now_dt = datetime.datetime.now()

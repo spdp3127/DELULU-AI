@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from delulu.permissions.guard import permission_guard
 from delulu.verification.engine import verification_engine
 from delulu.logs.audit_logger import audit_logger
+from delulu.skills.creative_builder import save_and_open_website, generate_svg_artwork
 
 class Skill:
     def __init__(self, name: str, description: str, parameters: Dict[str, Any], handler: Callable, category: str = "SYSTEM"):
@@ -408,6 +409,45 @@ class CentralSkillRegistry:
             parameters={"type": "object", "properties": {"expression": {"type": "string", "description": "Math expression to compute"}}, "required": ["expression"]},
             category="MATH",
             handler=_calc_math
+        ))
+
+        # 11. WEBSITE GENERATION SKILL
+        def _gen_website(ctx, topic: str = "Modern Digital Project", theme: str = "delulu_choice", tech_stack: str = "HTML5 / CSS3 / Vanilla JS", features: str = ""):
+            return save_and_open_website(topic=topic, theme=theme, tech_stack=tech_stack, features=features)
+
+        self.register(Skill(
+            name="website.generate",
+            description="Generate a complete, modern responsive website, save to workspace, and launch live in the browser.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "Subject, niche, or business of the website (e.g. Coffee Shop, Gym, Portfolio, SaaS)"},
+                    "theme": {"type": "string", "description": "Style/theme of the website or 'delulu_choice'"},
+                    "tech_stack": {"type": "string", "description": "Tech stack to use, e.g. HTML5 / CSS3 / Vanilla JS"}
+                },
+                "required": ["topic"]
+            },
+            category="CREATIVE",
+            handler=_gen_website
+        ))
+
+        # 12. IMAGE / VECTOR ARTWORK GENERATION SKILL
+        def _gen_image(ctx, prompt: str = "Futuristic Concept", style: str = "delulu_choice"):
+            return generate_svg_artwork(prompt=prompt, style=style)
+
+        self.register(Skill(
+            name="image.generate",
+            description="Generate a rich vector graphic/artwork, save to workspace, and launch live in the browser.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "Description of the visual concept or image to generate"},
+                    "style": {"type": "string", "description": "Visual aesthetic or 'delulu_choice'"}
+                },
+                "required": ["prompt"]
+            },
+            category="CREATIVE",
+            handler=_gen_image
         ))
 
 skill_registry = CentralSkillRegistry()

@@ -33,6 +33,8 @@ class PermissionGuard:
         "browser.search": "MEDIUM",
         "code.lint": "MEDIUM",
         "code.test": "MEDIUM",
+        "website.generate": "MEDIUM",
+        "image.generate": "MEDIUM",
 
         # HIGH Risk (State changes, file deletions, external messaging)
         "files.delete": "HIGH",
