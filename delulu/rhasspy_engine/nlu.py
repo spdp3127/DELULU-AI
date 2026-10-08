@@ -17,6 +17,24 @@ class RhasspyIntent:
     text: str = ""
 
 APP_ALIASES = {
+    # Websites
+    "youtube": "youtube",
+    "യൂട്യൂബ്": "youtube",
+    "google": "google",
+    "ഗൂഗിൾ": "google",
+    "whatsapp": "whatsapp",
+    "വാട്ട്സ്ആപ്പ്": "whatsapp",
+    "വാട്സാപ്പ്": "whatsapp",
+    "gmail": "gmail",
+    "github": "github",
+    "chatgpt": "chatgpt",
+    "instagram": "instagram",
+    "twitter": "twitter",
+    "x": "x",
+    "reddit": "reddit",
+    "netflix": "netflix",
+    "amazon": "amazon",
+    # Applications
     "calculator": "calculator",
     "calc": "calculator",
     "കാൽക്കുലേറ്റർ": "calculator",
@@ -24,6 +42,7 @@ APP_ALIASES = {
     "कैलकुलेटर": "calculator",
     "notepad": "notepad",
     "note": "notepad",
+    "notes": "notepad",
     "നോട്ട്പാഡ്": "notepad",
     "नोटपैड": "notepad",
     "chrome": "chrome",
@@ -38,17 +57,20 @@ APP_ALIASES = {
     "spotify": "spotify",
     "സ്പോട്ടിഫൈ": "spotify",
     "explorer": "explorer",
+    "files": "explorer",
     "code": "code",
     "vscode": "code",
     "visual studio code": "code",
     "settings": "settings",
-    "സെറ്റിംഗ്സ്": "settings"
+    "സെറ്റിംഗ്സ്": "settings",
+    "paint": "paint",
+    "camera": "camera"
 }
 
 class RhasspyNLUEngine:
     """
     Rhasspy Natural Language Understanding (NLU) Engine.
-    Parses human language into structured intents and slot entities
+    Parses human language into structured intents, compound actions, and slot entities
     using Rhasspy's JSGF grammar graph and high-performance multilingual matcher.
     """
     def __init__(self, ini_path: Optional[str] = None):
@@ -101,18 +123,71 @@ class RhasspyNLUEngine:
         if not q_cmd:
             q_cmd = q_lower
 
-        # A. Open Desktop App
-        # English: "open calculator", "launch notepad", "start chrome"
-        # Malayalam: "കാൽക്കുലേറ്റർ തുറക്കൂ", "നോട്ട്പാഡ് ഓപ്പൺ ചെയ്യൂ", "calculator thura", "open calc"
-        # Hindi: "कैलकुलेटर खोलो", "नोटपैड खोलो"
-        app_match = re.search(r'\b(?:open|launch|start)\s+(?:the\s+)?([a-zA-Z0-9\u0D00-\u0D7F\u0900-\u097F\s]+)', q_cmd)
+        # --- COMPOUND INTENTS (MULTI-ACTION COMMANDS) ---
+        # 1. Compound Open App and Calculate Math:
+        # e.g. "open calculator and calculate 5+5", "open calculator and claculate 5+5", "open calc and 5+5"
+        # Malayalam: "കാൽക്കുലേറ്റർ തുറന്ന് 5+5 കണക്കുകൂട്ടൂ", "കാൽക്കുലേറ്റർ തുറന്ന് 5+5 എത്രയാണ്", "calculator thurannu 5+5 calculate cheyyu"
+        is_calc_keyword = bool(re.search(r'\b(?:calc|calculator|\u0915\u0948\u0932\u0915\u0941\u0932\u0947\u091f\u0930)\b', q_cmd, re.I)) or any(k in q_cmd for k in ["കാൽക്കു", "കൽക്കു", "ക്യാൽക്കു"])
+        is_open_keyword = any(k in q_cmd for k in [
+            "open", "launch", "start", "തുറ", "thura", "ഓപ്പൺ", "खोलो"
+        ])
+        math_expr_match = re.search(r'([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)', q_cmd)
+
+        if is_calc_keyword and (is_open_keyword or any(k in q_cmd for k in ["calculate", "claculate", "compute", "കണക്കു", "എത്ര", "ethra"])) and math_expr_match:
+            calc_expr = math_expr_match.group(1).strip()
+            return RhasspyIntent(
+                name="CompoundOpenAndCalculate",
+                confidence=0.99,
+                slots={"app_name": "calculator", "expression": calc_expr},
+                text=clean_text
+            )
+
+        # 2. Compound Open Platform and Search Query:
+        # e.g. "open youtube and search mr beast", "search mr beast on youtube", "open google and search python"
+        # Malayalam: "യൂട്യൂബ് തുറന്ന് mr beast തിരയൂ", "യൂട്യൂബിൽ mr beast സെർച്ച് ചെയ്യൂ"
+        m_comp_search = re.search(r'\b(?:open\s+|തുറന്ന്?\s+)?(youtube|google|യൂട്യൂബ്|യൂറ്റ്യൂബ്|ഗൂഗിൾ)\s+(?:and\s+|pinne\s+|ennitt\s+)?(?:search|തിരയൂ|സെർച്ച്\s+ചെയ്യു|സെർച്ച്)\s+(?:for\s+)?(.*)', q_cmd)
+        m_search_on = re.search(r'\b(?:search|തിരയൂ|സെർച്ച്)\s+(?:for\s+)?(.*?)\s+(?:on|in|യിൽ|ഇൽ)\s+(youtube|google|യൂട്യൂബ്|യൂറ്റ്യൂബ്|ഗൂഗിൾ)\b', q_cmd)
+        if m_comp_search or m_search_on:
+            raw_plat = m_comp_search.group(1) if m_comp_search else m_search_on.group(2)
+            search_q = (m_comp_search.group(2) if m_comp_search else m_search_on.group(1)).strip()
+            plat_canonical = "youtube" if any(k in raw_plat for k in ["youtube", "യൂട്യൂബ്", "യൂറ്റ്യൂബ്"]) else "google"
+            return RhasspyIntent(
+                name="CompoundOpenAndSearch",
+                confidence=0.99,
+                slots={"platform": plat_canonical, "query": search_q},
+                text=clean_text
+            )
+
+        # --- SINGLE HARDWARE & DESKTOP INTENTS ---
+        # A. Open Desktop App or Website
+        # English: "open calculator", "open youtube", "open google", "launch notepad", "start chrome"
+        # Malayalam: "കാൽക്കുലേറ്റർ തുറക്കൂ", "യൂട്യൂബ് തുറക്കൂ", "നോട്ട്പാഡ് ഓപ്പൺ ചെയ്യൂ", "calculator thura", "open calc"
+        # Hindi: "कैलकुलेटर खोलो", "यूट्यूब खोलो", "नोटपैड खोलो"
+        app_match = re.search(r'\b(?:open|launch|start)\s+(?:the\s+)?([a-zA-Z0-9\u0D00-\u0D7F\u0900-\u097F\s\.]+)', q_cmd)
         app_mal_match = re.search(r'([a-zA-Z0-9\u0D00-\u0D7F]+)\s+(?:തുറക്കൂ|തുറക്കുക|തുറന്ന്\s+തരൂ|തുറ|ഓപ്പൺ\s+ചെയ്യു|ഓപ്പൺ\s+ചെയ്യുക|thura|open\s+cheyyu|thuranu\s+tha)', q_cmd)
         app_hi_match = re.search(r'([a-zA-Z0-9\u0900-\u097F]+)\s+(?:खोलो|खोलिए|चालू\s+करो)', q_cmd)
 
-        if (app_match or app_mal_match or app_hi_match) and not any(k in q_cmd for k in ["calculate", "math", "tab", "file"]):
+        if (app_match or app_mal_match or app_hi_match) and not any(k in q_cmd for k in ["calculate", "claculate", "compute", "math", "tab", "file", "+", "-", "*", "/", "കണക്കു"]):
             raw_app = (app_match.group(1) if app_match else (app_mal_match.group(1) if app_mal_match else app_hi_match.group(1))).strip()
-            raw_app = re.sub(r'\s+app\b', '', raw_app).strip()
+            # Strip accidental conjunctions or trailing words
+            raw_app = re.sub(r'\s+(?:and|please|now|app|window)\b.*', '', raw_app).strip()
+            raw_app = re.sub(r'^(?:the|a)\s+', '', raw_app).strip()
+
+            # Canonicalize app or website name
             canonical_app = APP_ALIASES.get(raw_app, raw_app)
+            if any(w in raw_app for w in ["കാൽക്കു", "കൽക്കു", "ക്യാൽക്കു", "calculator", "calc", "कैलकुलेटर"]):
+                canonical_app = "calculator"
+            elif any(w in raw_app for w in ["യൂട്യൂബ്", "youtube"]):
+                canonical_app = "youtube"
+            elif any(w in raw_app for w in ["ഗൂഗിൾ", "google"]):
+                canonical_app = "google"
+            elif any(w in raw_app for w in ["വാട്ട്സ്", "വാട്സാ", "whatsapp"]):
+                canonical_app = "whatsapp"
+            elif any(w in raw_app for w in ["നോട്ട്", "notepad", "note", "नोटपैड"]):
+                canonical_app = "notepad"
+            elif any(w in raw_app for w in ["ക്രോം", "ബ്രൗസർ", "chrome", "browser", "क्रोम"]):
+                canonical_app = "chrome"
+
             return RhasspyIntent(
                 name="OpenApp",
                 confidence=0.98,
@@ -219,8 +294,7 @@ class RhasspyNLUEngine:
             )
 
         # H. Math Calculation (Zero-latency offline arithmetic)
-        # Examples: "calculate 5+5", "what is 100 * 25", "now calculate 5+5", "5+5", "5 + 5 എത്രയാണ്", "5+5 ethrayanu"
-        math_regex = r'(?:(?:now\s+)?calculate|compute|solve|what\s+is|value\s+of)?\s*([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)'
+        math_regex = r'(?:(?:now\s+)?c[al]{2}culate|compute|solve|what\s+is|value\s+of)?\s*([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)'
         norm_math = q_cmd.replace('times', '*').replace('plus', '+').replace('minus', '-').replace('divided by', '/')
         m_calc = re.search(math_regex, norm_math)
         if m_calc and not re.search(r'^\s*open\b', q_cmd):
@@ -289,14 +363,29 @@ class RhasspyNLUEngine:
                 text=clean_text
             )
 
-        # L. Pure Greeting (Strict: only matches when there is no substantive command/question)
+        # L. Well-being Question ("how are you")
+        how_are_you_patterns = [
+            "how are you", "how are you doing", "how do you do", "hows it going", "how's it going",
+            "how are you delulu", "how are you jarvis", "are you okay", "are you fine",
+            "sugamano", "sughamano", "enthokkeyundu", "enthundu vishesham", "sukhamano",
+            "സുഖമാണോ", "എന്തൊക്കെയുണ്ട്", "സുഖം തന്നെയല്ലേ",
+            "कैसे हो", "आप कैसे हैं", "क्या हाल है"
+        ]
+        if any(h == q_cmd or q_cmd.startswith(h + " ") or q_cmd.endswith(" " + h) for h in how_are_you_patterns):
+            return RhasspyIntent(
+                name="HowAreYou",
+                confidence=0.99,
+                slots={},
+                text=clean_text
+            )
+
+        # M. Pure Greeting (Strict: only matches when there is no substantive command/question)
         pure_greetings = [
             "hai", "hi", "hello", "hey", "hey delulu", "delulu", "jarvis",
             "good morning", "good afternoon", "good evening", "good day",
-            "namaskaram", "namaste", "enthokkeyundu", "sugamano", "sughamano",
-            "how are you", "what's up", "whats up",
-            "ഹലോ", "ഹായ്", "നമസ്കാരം", "സുഖമാണോ", "എന്തൊക്കെയുണ്ട്",
-            "नमस्ते", "नमस्कार", "कैसे हो"
+            "namaskaram", "namaste",
+            "ഹലോ", "ഹായ്", "നമസ്കാരം",
+            "नमस्ते", "नमस्कार"
         ]
         if q_cmd in pure_greetings or q_lower in pure_greetings:
             return RhasspyIntent(

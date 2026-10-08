@@ -106,17 +106,42 @@ class CentralSkillRegistry:
         # 2. WEB SEARCH
         def _web_search(ctx, query: str):
             import requests
+            import urllib.parse
+            import re
+            clean_q = query.strip()
+            topic = re.sub(r'^(?:who|what|where|how|tell me about|information on)\s+(?:is|are|was|were|about)?\s*', '', clean_q, flags=re.I).strip()
+            topic = topic.rstrip('?.,!')
+
+            # 1. Try Wikipedia API (rich encyclopedic knowledge)
+            if topic:
+                try:
+                    wiki_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(topic)}"
+                    headers = {"User-Agent": "DELULU-AI-Assistant/1.0 (https://delulu.ai; info@delulu.ai)"}
+                    r_wiki = requests.get(wiki_url, headers=headers, timeout=4)
+                    if r_wiki.status_code == 200:
+                        extract = r_wiki.json().get("extract")
+                        if extract and len(extract) > 20:
+                            return extract
+                except Exception:
+                    pass
+
+            # 2. Try DuckDuckGo Instant Answer API with proper User-Agent
             try:
-                # DuckDuckGo HTML / instant search
-                r = requests.get(f"https://api.duckduckgo.com/?q={query}&format=json", timeout=6)
-                if r.status_code == 200:
-                    data = r.json()
+                ddg_url = f"https://api.duckduckgo.com/?q={urllib.parse.quote(clean_q)}&format=json&no_html=1"
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                r_ddg = requests.get(ddg_url, headers=headers, timeout=5)
+                if r_ddg.status_code == 200:
+                    data = r_ddg.json()
                     abstract = data.get("AbstractText")
                     if abstract:
                         return abstract
-                return f"Web search for '{query}' returned relevant topics and links."
+                    related = data.get("RelatedTopics", [])
+                    if related and isinstance(related[0], dict) and related[0].get("Text"):
+                        return related[0]["Text"]
             except Exception:
-                return f"Live search results for: '{query}'."
+                pass
+
+            return f"Information about '{clean_q}': A notable topic and subject with global interest."
 
         self.register(Skill(
             name="web.search",

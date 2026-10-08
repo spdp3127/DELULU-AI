@@ -88,21 +88,81 @@ class SystemSkill(Skill):
             return json.dumps({"status": "error", "message": str(e)})
 
     def open_app(self, app_name: str) -> str:
-        """Launches application on Windows."""
+        """Launches application or opens website on Windows."""
+        import webbrowser
+        import urllib.parse
+        import re
         try:
+            clean_name = app_name.lower().strip()
+
+            # 1. Websites & Web Services
+            websites = {
+                "youtube": "https://www.youtube.com",
+                "google": "https://www.google.com",
+                "whatsapp": "https://web.whatsapp.com",
+                "gmail": "https://mail.google.com",
+                "github": "https://github.com",
+                "chatgpt": "https://chatgpt.com",
+                "instagram": "https://www.instagram.com",
+                "twitter": "https://x.com",
+                "x": "https://x.com",
+                "reddit": "https://www.reddit.com",
+                "netflix": "https://www.netflix.com",
+                "spotify web": "https://open.spotify.com",
+                "amazon": "https://www.amazon.in",
+                "facebook": "https://www.facebook.com",
+                "linkedin": "https://www.linkedin.com"
+            }
+
+            # YouTube search if query included, e.g. "youtube mr beast" or "youtube search mr beast"
+            if "youtube" in clean_name and any(clean_name.startswith(p) for p in ["youtube ", "youtube search ", "search youtube "]):
+                q_part = re.sub(r'^(?:youtube\s+(?:search\s+)?|search\s+youtube\s+)', '', clean_name).strip()
+                if q_part:
+                    webbrowser.open(f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(q_part)}")
+                    return json.dumps({"status": "success", "app": "youtube", "query": q_part})
+
+            # Google search if query included
+            if "google" in clean_name and any(clean_name.startswith(p) for p in ["google ", "google search ", "search google "]):
+                q_part = re.sub(r'^(?:google\s+(?:search\s+)?|search\s+google\s+)', '', clean_name).strip()
+                if q_part:
+                    webbrowser.open(f"https://www.google.com/search?q={urllib.parse.quote_plus(q_part)}")
+                    return json.dumps({"status": "success", "app": "google", "query": q_part})
+
+            if clean_name in websites:
+                webbrowser.open(websites[clean_name])
+                return json.dumps({"status": "success", "app": clean_name, "url": websites[clean_name]})
+
+            if clean_name.startswith("http://") or clean_name.startswith("https://") or clean_name.endswith(".com") or clean_name.endswith(".org") or clean_name.endswith(".in"):
+                url = clean_name if clean_name.startswith("http") else f"https://{clean_name}"
+                webbrowser.open(url)
+                return json.dumps({"status": "success", "app": clean_name, "url": url})
+
+            # 2. Desktop Windows Applications
             alias_map = {
-                "calculator": "calc",
+                "calculator": "calc.exe",
+                "calc": "calc.exe",
                 "browser": "start chrome || start msedge",
                 "chrome": "start chrome",
                 "edge": "start msedge",
-                "notepad": "notepad",
-                "explorer": "explorer",
-                "files": "explorer",
+                "notepad": "notepad.exe",
+                "notes": "notepad.exe",
+                "explorer": "explorer.exe",
+                "files": "explorer.exe",
                 "settings": "start ms-settings:",
                 "terminal": "start wt || start cmd",
                 "cmd": "start cmd",
+                "powershell": "start powershell",
+                "paint": "mspaint.exe",
+                "task manager": "taskmgr.exe",
+                "taskmgr": "taskmgr.exe",
+                "control panel": "control.exe",
+                "spotify": "start spotify || start https://open.spotify.com",
+                "code": "code",
+                "vscode": "code",
+                "visual studio code": "code",
+                "camera": "start microsoft.windows.camera:",
             }
-            clean_name = app_name.lower().strip()
+
             cmd = alias_map.get(clean_name, f"start {app_name}")
             subprocess.Popen(cmd, shell=True)
             return json.dumps({"status": "success", "app": app_name})

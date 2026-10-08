@@ -606,6 +606,58 @@ class Orchestrator:
         q = query.lower().strip()
         tools_run = []
 
+        # 0a. Compound Open App and Calculate
+        is_calc_keyword = bool(re.search(r'\b(?:calc|calculator|\u0915\u0948\u0932\u0915\u0941\u0932\u0947\u091f\u0930)\b', q, re.I)) or any(k in q for k in ["കാൽക്കു", "കൽക്കു", "ക്യാൽക്കു"])
+        is_open_keyword = any(k in q for k in ["open", "launch", "start", "തുറ", "thura", "ഓപ്പൺ", "खोलो"])
+        math_in_q = re.search(r'([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)', q)
+        if is_calc_keyword and (is_open_keyword or any(k in q for k in ["calculate", "claculate", "compute", "കണക്കു", "എത്ര", "ethra"])) and math_in_q:
+            expr = math_in_q.group(1).strip()
+            res_open = skill_registry.execute_skill("app.open", {"app_name": "calculator"}, context)
+            tools_run.append({"tool": "app.open", "args": {"app_name": "calculator"}, "result": res_open})
+            res_math = skill_registry.execute_skill("math.calculate", {"expression": expr}, context)
+            tools_run.append({"tool": "math.calculate", "args": {"expression": expr}, "result": res_math})
+            res_str = res_math.get("result", expr)
+            if active_lang == "Malayalam":
+                return f"കാൽക്കുലേറ്റർ തുറന്ന് {res_str} കണക്കുകൂട്ടിയിട്ടുണ്ട്.", tools_run
+            elif active_lang == "Hindi":
+                return f"मैंने कैलकुलेटर खोल दिया है और {res_str} हल कर दिया है।", tools_run
+            return f"I have opened Calculator and calculated {res_str}.", tools_run
+
+        # 0b. Compound Open Platform and Search
+        if ("youtube" in q or "യൂട്യൂബ്" in q) and any(k in q for k in ["search", "തിരയൂ", "സെർച്ച്"]):
+            import urllib.parse, webbrowser
+            sq = re.sub(r'^(?:open\s+)?(?:youtube|യൂട്യൂബ്)\s+(?:and\s+)?(?:search\s+(?:for\s+)?|തിരയൂ\s+|സെർച്ച്\s+)', '', q).strip()
+            sq = re.sub(r'\s+on\s+youtube.*', '', sq).strip()
+            if sq:
+                url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(sq)}"
+                webbrowser.open(url)
+                tools_run.append({"tool": "app.open", "args": {"app_name": "youtube", "query": sq}, "result": {"status": "success", "url": url}})
+                if active_lang == "Malayalam":
+                    return f"യൂട്യൂബ് തുറന്ന് '{sq}' തിരഞ്ഞിട്ടുണ്ട്.", tools_run
+                return f"Opened YouTube and searched for '{sq}'.", tools_run
+
+        # 0c. Well-being Question ("how are you", "sugamano")
+        how_are_you_keys = [
+            "how are you", "how are you doing", "how do you do", "hows it going", "how's it going",
+            "sugamano", "sughamano", "enthokkeyundu", "enthundu vishesham", "sukhamano",
+            "സുഖമാണോ", "എന്തൊക്കെയുണ്ട്", "സുഖം തന്നെയല്ലേ", "कैसे हो", "आप कैसे हैं"
+        ]
+        if any(h in q for h in how_are_you_keys):
+            if active_lang == "Malayalam":
+                return "എനിക്ക് സുഖമാണ്, സർ. എല്ലാ സംവിധാനങ്ങളും മികച്ച രീതിയിൽ പ്രവർത്തിക്കുന്നു. എന്താണ് ഞാൻ ചെയ്യേണ്ടത്?", tools_run
+            elif active_lang == "Hindi":
+                return "मैं बिल्कुल ठीक हूँ, सर। सभी प्रणालियाँ सुचारु रूप से चल रही हैं। मैं आपकी क्या मदद कर सकता हूँ?", tools_run
+            return "I am functioning at peak performance, Sir. Ready to assist you with anything you need.", tools_run
+
+        # 0d. Informational / Encyclopedic Web Search
+        if any(q.startswith(p) for p in ["who is", "who was", "how is", "what is", "tell me about"]):
+            if not any(k in q for k in ["time", "date", "weather", "delulu", "you"]):
+                res_search = skill_registry.execute_skill("web.search", {"query": query}, context)
+                tools_run.append({"tool": "web.search", "args": {"query": query}, "result": res_search})
+                s_res = res_search.get("result", "")
+                if s_res:
+                    return s_res, tools_run
+
         # 1. Weather
         if any(w in q for w in ["weather", "climate", "temperature", "mazha", "kalavastha"]):
             loc = "Kochi"
@@ -707,7 +759,7 @@ class Orchestrator:
             return "I am DELULU, made by SPDP company.", tools_run
 
         # 13. Greeting & generic
-        if any(w in q for w in ["hello", "hi", "hai", "hey", "namaskaram", "namaste", "sugamano", "enthokkeyundu"]):
+        if any(w in q for w in ["hello", "hi", "hai", "hey", "namaskaram", "namaste", "ഹലോ", "ഹായ്"]):
             if active_lang == "Malayalam":
                 return "ഹലോ! ഞാൻ DELULU ആണ്. ഞാൻ സജ്ജമാണ്, എന്താണ് ചെയ്യേണ്ടത്?", tools_run
             elif active_lang == "Hindi":

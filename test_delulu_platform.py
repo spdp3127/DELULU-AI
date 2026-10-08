@@ -175,8 +175,43 @@ def run_delulu_tests():
     assert "Kochi" in msg_weather["content"]
     print(f"[16] End-to-End Rhasspy Brain Orchestration: PASS (Math: '{msg_body['content']}', Greet: '{msg_greet['content']}', Weather: '{msg_weather['content']}')")
 
+    # 17. User Prompts Verification: YouTube, Compound Calc, How Are You, Mr Beast Search
+    # A. Open YouTube
+    chat_yt = client.post("/api/v1/chat/send", json={"content": "open youtube"}, headers=headers_a)
+    assert chat_yt.status_code == 200
+    msg_yt = chat_yt.json()["assistant_message"]
+    assert "YouTube" in msg_yt["content"] or "open" in msg_yt["content"]
+
+    # B. Open Calculator and Calculate 5+5 (handles typo 'claculate')
+    chat_calc = client.post("/api/v1/chat/send", json={"content": "open calculator and claculate 5+5"}, headers=headers_a)
+    assert chat_calc.status_code == 200
+    msg_calc = chat_calc.json()["assistant_message"]
+    assert "10" in msg_calc["content"]
+    assert any(tc["tool"] == "app.open" for tc in msg_calc["tool_calls"])
+    assert any(tc["tool"] == "math.calculate" for tc in msg_calc["tool_calls"])
+
+    # C. How are you (distinct response)
+    chat_how = client.post("/api/v1/chat/send", json={"content": "how are you"}, headers=headers_a)
+    assert chat_how.status_code == 200
+    msg_how = chat_how.json()["assistant_message"]
+    assert "peak performance" in msg_how["content"] or "functioning" in msg_how["content"] or "online" in msg_how["content"]
+
+    # D. Factual Web Search: Mr Beast
+    chat_mb = client.post("/api/v1/chat/send", json={"content": "how is mr beast"}, headers=headers_a)
+    assert chat_mb.status_code == 200
+    msg_mb = chat_mb.json()["assistant_message"]
+    assert "Beast" in msg_mb["content"] or "MrBeast" in msg_mb["content"] or "YouTube" in msg_mb["content"]
+
+    # E. Malayalam Compound Command: കാൽക്കുലേറ്റർ തുറന്ന് 5+5 കണക്കുകൂട്ടൂ
+    chat_mal = client.post("/api/v1/chat/send", json={"content": "കാൽക്കുലേറ്റർ തുറന്ന് 5+5 കണക്കുകൂട്ടൂ"}, headers=headers_a)
+    assert chat_mal.status_code == 200
+    msg_mal = chat_mal.json()["assistant_message"]
+    assert "10" in msg_mal["content"]
+
+    print(f"[17] Real System Execution (YouTube, Compound Calc, HowAreYou, WebSearch, Malayalam): PASS")
+
     print("\n" + "=" * 65)
-    print("  ALL 16 DELULU & RHASSPY SUBSYSTEMS VERIFIED & PASSING!")
+    print("  ALL 17 DELULU & RHASSPY SUBSYSTEMS VERIFIED & PASSING!")
     print("=" * 65)
 
 if __name__ == "__main__":

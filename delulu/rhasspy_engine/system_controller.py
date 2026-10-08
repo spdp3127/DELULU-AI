@@ -1,4 +1,6 @@
 import datetime
+import webbrowser
+import urllib.parse
 from typing import Dict, Any, List, Tuple, Optional
 from delulu.skills.registry import skill_registry
 from delulu.rhasspy_engine.nlu import RhasspyIntent
@@ -18,14 +20,14 @@ RHASSPY_LANG_MAP = {
     'french': ('French', 'fr-FR', 'Bien sûr, je vais maintenant vous parler en français.'),
     'german': ('German', 'de-DE', 'Natürlich, ich werde ab jetzt auf Deutsch mit Ihnen sprechen.'),
     'arabic': ('Arabic', 'ar-SA', 'بالتأكيد، سأتحدث معك باللغة العربية من الآن فصاعدًا.'),
-    'tamil': ('Tamil', 'ta-IN', 'நிச்சயமாக, இனி நான் உங்களிடம் தமிழில் பேசுகிறேன்.')
+    'tamil': ('Tamil', 'ta-IN', 'நிச்சயமாக, ഇനി ഞാൻ உங்களிடம் தமிழில் பேசுகிறேன்.')
 }
 
 class RhasspySystemController:
     """
     Rhasspy System Control & Intent Dispatcher.
     Executes real system actions, desktop automation, hardware control,
-    and memory persistence for recognized Rhasspy intents.
+    compound multi-action commands, and memory persistence for recognized Rhasspy intents.
     """
 
     def handle_intent(self, intent: RhasspyIntent, context: Dict[str, Any], active_lang: str = "English") -> Tuple[str, List[Dict[str, Any]], Optional[str]]:
@@ -39,18 +41,74 @@ class RhasspySystemController:
         user_id = context.get("user_id")
         db = context.get("db")
 
-        # 1. Open Desktop Application
+        # 0. Compound Open App and Calculate
+        # e.g. "open calculator and calculate 5+5", "open calculator and claculate 5+5"
+        if name == "CompoundOpenAndCalculate":
+            app_name = slots.get("app_name", "calculator")
+            expr = slots.get("expression", "")
+
+            # 1. Open Calculator
+            res_open = skill_registry.execute_skill("app.open", {"app_name": app_name}, context)
+            tools_run.append({"tool": "app.open", "args": {"app_name": app_name}, "result": res_open})
+
+            # 2. Calculate Math
+            res_math = skill_registry.execute_skill("math.calculate", {"expression": expr}, context)
+            tools_run.append({"tool": "math.calculate", "args": {"expression": expr}, "result": res_math})
+            res_str = res_math.get("result", expr)
+
+            # 3. Type into open Windows Calculator
+            try:
+                import pyautogui
+                norm_expr = expr.replace(' ', '')
+                pyautogui.typewrite(f"{norm_expr}=", interval=0.04)
+            except Exception:
+                pass
+
+            if active_lang == "Malayalam":
+                return f"കാൽക്കുലേറ്റർ തുറന്ന് {res_str} കണക്കുകൂട്ടിയിട്ടുണ്ട്.", tools_run, None
+            elif active_lang == "Hindi":
+                return f"मैंने कैलकुलेटर खोल दिया है और {res_str} हल कर दिया है।", tools_run, None
+            return f"I have opened Calculator and calculated {res_str}.", tools_run, None
+
+        # 0b. Compound Open Platform and Search
+        # e.g. "open youtube and search mr beast", "search mr beast on youtube"
+        if name == "CompoundOpenAndSearch":
+            platform = slots.get("platform", "youtube").lower()
+            query = slots.get("query", "").strip()
+
+            if "youtube" in platform:
+                url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}"
+                webbrowser.open(url)
+                tools_run.append({"tool": "app.open", "args": {"app_name": "youtube", "query": query}, "result": {"status": "success", "url": url}})
+                if active_lang == "Malayalam":
+                    return f"യൂട്യൂബ് തുറന്ന് '{query}' തിരഞ്ഞിട്ടുണ്ട്.", tools_run, None
+                return f"Opened YouTube and searched for '{query}'.", tools_run, None
+            elif "google" in platform:
+                url = f"https://www.google.com/search?q={urllib.parse.quote_plus(query)}"
+                webbrowser.open(url)
+                tools_run.append({"tool": "app.open", "args": {"app_name": "google", "query": query}, "result": {"status": "success", "url": url}})
+                if active_lang == "Malayalam":
+                    return f"ഗൂഗിൾ തുറന്ന് '{query}' തിരഞ്ഞിട്ടുണ്ട്.", tools_run, None
+                return f"Opened Google and searched for '{query}'.", tools_run, None
+
+        # 1. Open Desktop Application or Website
         if name == "OpenApp":
             app_name = slots.get("app_name", "App")
             res = skill_registry.execute_skill("app.open", {"app_name": app_name}, context)
             tools_run.append({"tool": "app.open", "args": {"app_name": app_name}, "result": res})
+            clean_display = app_name.capitalize()
+            if app_name.lower() in ["youtube", "യൂട്യൂബ്"]:
+                clean_display = "YouTube"
+            elif app_name.lower() in ["whatsapp", "വാട്സാപ്പ്"]:
+                clean_display = "WhatsApp Web"
+
             if active_lang == "Malayalam":
-                return f"{app_name} ഇപ്പോൾ തുറന്നിരിക്കുന്നു.", tools_run, None
+                return f"{clean_display} ഇപ്പോൾ തുറന്നിരിക്കുന്നു.", tools_run, None
             elif active_lang == "Hindi":
-                return f"{app_name} खोल दिया गया है।", tools_run, None
+                return f"{clean_display} खोल दिया गया है।", tools_run, None
             elif active_lang == "Japanese":
-                return f"{app_name} を開きました。", tools_run, None
-            return f"A {app_name} window is now open.", tools_run, None
+                return f"{clean_display} を開きました。", tools_run, None
+            return f"A {clean_display} window is now open.", tools_run, None
 
         # 2. Change System Volume
         if name == "ChangeVolume":
@@ -160,19 +218,31 @@ class RhasspySystemController:
                 reply = "I am DELULU, made by SPDP company."
             return reply, [], None
 
-        # 11. Greeting
-        if name == "Greeting":
+        # 11. Well-being Question ("how are you")
+        if name == "HowAreYou":
             if active_lang == "Malayalam":
-                reply = "ഹലോ! ഞാൻ DELULU ആണ്. ഞാൻ സജ്ജമാണ്, എന്ത് സഹായമാണ് വേണ്ടത്?"
+                reply = "എനിക്ക് സുഖമാണ്! ഞാൻ പൂർണ്ണ സജ്ജനാണ്, എന്താണ് ചെയ്യേണ്ടത്?"
             elif active_lang == "Hindi":
-                reply = "नमस्ते! मैं DELULU हूँ। मैं आपकी क्या मदद कर सकता हूँ?"
+                reply = "मैं बिल्कुल ठीक हूँ! आपकी क्या मदद करूँ?"
             elif active_lang == "Japanese":
-                reply = "こんにちは！DELULUです。何かお手伝いできることはありますか？"
+                reply = "元気です！何かお手伝いできることはありますか？"
             else:
-                reply = "Hello! I am DELULU. I am online and ready to assist you."
+                reply = "I am functioning at peak performance, Sir. Ready to assist you with anything you need."
             return reply, [], None
 
-        # 12. Live Weather
+        # 12. Greeting
+        if name == "Greeting":
+            if active_lang == "Malayalam":
+                reply = "ഹലോ! ഞാൻ DELULU ആണ്. ഞാൻ ഓൺലൈനിലാണ്."
+            elif active_lang == "Hindi":
+                reply = "नमस्ते! मैं DELULU हूँ। मैं ऑनलाइन हूँ।"
+            elif active_lang == "Japanese":
+                reply = "こんにちは！DELULUです。"
+            else:
+                reply = "Hello! I am DELULU, online and ready to assist you."
+            return reply, [], None
+
+        # 13. Live Weather
         if name == "GetWeather":
             loc = slots.get("location", "Kochi")
             res = skill_registry.execute_skill("weather.get", {"location": loc}, context)

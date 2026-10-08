@@ -31,3 +31,6 @@ venv_trash/
 # Platform Database & Private User Storage
 delulu_platform.db*
 delulu/storage/users/
+
+# Local Export Bundle
+DELULU_GITHUB_READY/
