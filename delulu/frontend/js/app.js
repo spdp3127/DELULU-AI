@@ -20,7 +20,7 @@ const $ = id => document.getElementById(id);
 // --- 1. CORE AI REACTOR STATE MACHINE & PALETTES ---
 // [name, caption, spin, pulse, rings, wave, rgb]
 const S = {
-  IDLE: ['Ready', 'Waiting for “Hey Delulu” or “Jarvis”', .12, .02, .3, 0, [61, 232, 255]],
+  IDLE: ['Ready', 'Listening in background... Say “Delulu”', .12, .02, .3, 0, [61, 232, 255]],
   WAKE: ['Awake', 'DELULU is online', .9, .1, 1, 0, [205, 248, 255]],
   LISTENING: ['Listening', 'Go ahead, I am listening...', .4, .06, .7, 1, [61, 232, 255]],
   THINKING: ['Thinking', 'Analyzing and reasoning...', 1.8, .03, 1, 0, [110, 190, 255]],
@@ -71,6 +71,21 @@ function setCoreState(s, m) {
     announceToScreenReader('Microphone open. DELULU is listening...');
   } else if (s === 'EXECUTING') {
     announceToScreenReader(m || 'Executing system action...');
+  }
+
+  // Always re-arm persistent background microphone when transitioning to IDLE
+  if (s === 'IDLE') {
+    if (window._wakeListeningTimeout) {
+      clearTimeout(window._wakeListeningTimeout);
+      window._wakeListeningTimeout = null;
+    }
+    if (isVoiceEngineActive) {
+      setTimeout(() => {
+        if (coreState === 'IDLE' && isVoiceEngineActive && !isVoiceEngineRunning && !isVoiceEngineStarting) {
+          startUnifiedVoiceEngine();
+        }
+      }, 100);
+    }
   }
 
   const apprEl = $('appr');
@@ -170,9 +185,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Audio & Microphone auto-unlock on first user gesture
-  const onFirstInteraction = () => {
+  const onFirstInteraction = async () => {
     unlockAudioEngine();
-    if (isVoiceEngineActive && !voiceEngine) {
+    ensureAudioKeepAlive();
+    await requestPersistentMicAccess();
+    if (isVoiceEngineActive && (!voiceEngine || !isVoiceEngineRunning)) {
       startUnifiedVoiceEngine();
     }
   };
@@ -436,6 +453,39 @@ function unlockAudioEngine() {
   } catch(e) {}
 }
 
+async function requestPersistentMicAccess() {
+  try {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      if (!window._micMediaStream) {
+        window._micMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log("[Mic] Persistent background audio stream active.");
+      }
+    }
+  } catch(e) {
+    console.warn("[Mic] Persistent stream permission notice:", e);
+  }
+}
+
+function ensureAudioKeepAlive() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      if (!window._keepAliveAudioCtx) {
+        window._keepAliveAudioCtx = new AudioCtx();
+        const osc = window._keepAliveAudioCtx.createOscillator();
+        const gain = window._keepAliveAudioCtx.createGain();
+        gain.gain.value = 0.00001; // Silent keep-alive to prevent background tab sleep
+        osc.connect(gain);
+        gain.connect(window._keepAliveAudioCtx.destination);
+        osc.start();
+      }
+      if (window._keepAliveAudioCtx.state === 'suspended') {
+        window._keepAliveAudioCtx.resume();
+      }
+    }
+  } catch(e) {}
+}
+
 function playGeminiWakeChime() {
   try {
     unlockAudioEngine();
@@ -448,7 +498,7 @@ function playGeminiWakeChime() {
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(587.33, now);
     osc1.frequency.exponentialRampToValueAtTime(783.99, now + 0.08);
-    gain1.gain.setValueAtTime(0.2, now);
+    gain1.gain.setValueAtTime(0.25, now);
     gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
     osc1.connect(gain1);
     gain1.connect(ctx.destination);
@@ -461,7 +511,7 @@ function playGeminiWakeChime() {
     osc2.frequency.setValueAtTime(880, now + 0.07);
     osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.18);
     gain2.gain.setValueAtTime(0.001, now);
-    gain2.gain.setValueAtTime(0.22, now + 0.07);
+    gain2.gain.setValueAtTime(0.28, now + 0.07);
     gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
     osc2.connect(gain2);
     gain2.connect(ctx.destination);
@@ -483,28 +533,35 @@ function cancelAssistantSpeech() {
   }
 }
 
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function detectWakeWord(transcript) {
   if (!transcript) return null;
   const t = transcript.toLowerCase().trim();
 
+  // 1. Direct wake words matching as words or prefixes
   for (const w of WAKE_WORDS) {
     const wl = w.toLowerCase();
-    const idx = t.indexOf(wl);
-    if (idx !== -1) {
+    const rgx = new RegExp(`(^|\\b)${escapeRegex(wl)}(\\b|$)`, 'i');
+    const match = t.match(rgx);
+    if (match) {
+      const idx = match.index + match[1].length;
       const after = t.slice(idx + wl.length).replace(/^[,\s\.\?!:;]+/, '').trim();
       return { matched: w, command: after };
     }
   }
 
-  const deluluEnRegex = /\b(?:hey|hi|hello|ok|okay|a|hae|hai|yo)?\s*(?:delulu|de\s*lulu|the\s*lulu|dilulu|day\s*lulu|deloo|delu\s*lu|jarvis|gemini)\b/i;
-  const mEn = t.match(deluluEnRegex);
+  // 2. English phonetic & variations
+  const mEn = t.match(/\b(?:hey|hi|hello|ok|okay|a|hae|hai|yo)?\s*(delulu|de\s*lulu|the\s*lulu|dilulu|day\s*lulu|deloo|delu\s*lu|jarvis|gemini)\b/i);
   if (mEn) {
     const after = t.slice(mEn.index + mEn[0].length).replace(/^[,\s\.\?!:;]+/, '').trim();
     return { matched: mEn[0], command: after };
   }
 
-  const deluluMlRegex = /(?:ഹേ|ഹേയ്|ഹായ്|ഹലോ|എടാ|എടോ|ശരി)?\s*(?:ഡെലുലു|ഡിലുലു|ദെലുലു|ദിലുലു|ഡീലുലു|ജാർവിസ്|ലുലു)\b/i;
-  const mMl = t.match(deluluMlRegex);
+  // 3. Malayalam variations
+  const mMl = t.match(/(?:ഹേ|ഹേയ്|ഹായ്|ഹലോ|എടാ|എടോ|ശരി)?\s*(ഡെലുലു|ഡിലുലു|ദെലുലു|ദിലുലു|ഡീലുലു|ജാർവിസ്|ലുലു)\b/i);
   if (mMl) {
     const after = t.slice(mMl.index + mMl[0].length).replace(/^[,\s\.\?!:;]+/, '').trim();
     return { matched: mMl[0], command: after };
@@ -541,12 +598,12 @@ function startUnifiedVoiceEngine() {
     voiceEngine.onstart = () => {
       isVoiceEngineStarting = false;
       isVoiceEngineRunning = true;
-      console.log("Unified Voice Engine Active. Language:", voiceEngine.lang);
+      console.log("[Voice Engine] Background Listening Active. Lang:", voiceEngine.lang);
       updateWakeWordUI(true);
     };
 
     voiceEngine.onresult = (e) => {
-      // 1. If Delulu is actively speaking, allow barge-in / interruption
+      // 1. If Delulu is actively speaking, allow voice barge-in / interruption
       if (coreState === 'SPEAKING' || coreState === 'EXECUTING') {
         const spoken = Array.from(e.results).slice(e.resultIndex).map(r => r[0].transcript).join(' ').toLowerCase();
         if (spoken.includes('delulu') || spoken.includes('ഡെലുലു') || spoken.includes('stop') || spoken.includes('നിർത്തൂ')) {
@@ -556,7 +613,7 @@ function startUnifiedVoiceEngine() {
         return;
       }
 
-      // Collect interim and final speech chunks
+      // Collect speech chunks
       let interim = '';
       let finalStr = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -571,34 +628,39 @@ function startUnifiedVoiceEngine() {
       const rawTranscript = (finalStr + interim).trim();
       if (!rawTranscript) return;
 
-      // MODE A: In IDLE state, check for Wake Word
+      // MODE A: In IDLE state, STRICT WAKE WORD GATE (Gemini-Grade Ambient Listening)
       if (coreState === 'IDLE') {
         const wakeHit = detectWakeWord(rawTranscript);
         if (wakeHit) {
-          console.log("Wake Word Detected:", wakeHit.matched, "Command:", wakeHit.command);
+          console.log("[Wake Word Detected]:", wakeHit.matched, "Command:", wakeHit.command);
           cancelAssistantSpeech();
           playGeminiWakeChime();
           pulse = 1;
 
           if (wakeHit.command && wakeHit.command.length > 2) {
-            // Spoken in one breath: "Hey Delulu what's the time"
+            // Spoken in one breath: "Hey Delulu open calculator" or "Delulu calculate 5+5"
             currentSpokenCommand = wakeHit.command;
+            setCoreState('THINKING', `Analyzing: “${wakeHit.command}”`);
             commitVoiceCommand();
           } else {
-            // Wake word only: Transition to listening immediately on the same open mic
-            setCoreState('WAKE');
-            setTimeout(() => {
-              setCoreState('LISTENING', 'Listening, go ahead...');
-              const micBtn = $('mic');
-              if (micBtn) micBtn.classList.add('active');
-            }, 100);
+            // Wake word only: "Delulu" -> wake up and listen
+            triggerWake();
           }
+          return;
+        } else {
+          // STRICT GEMINI BEHAVIOR: Background speech, ambient room noise, or TV is ignored!
+          // The mic stays continuously ON in the background without disturbing the user.
           return;
         }
       }
 
-      // MODE B: In LISTENING state (either from wake word or mic button click)
+      // MODE B: In LISTENING state (Delulu is actively waiting for command)
       if (coreState === 'LISTENING') {
+        if (window._wakeListeningTimeout) {
+          clearTimeout(window._wakeListeningTimeout);
+          window._wakeListeningTimeout = null;
+        }
+
         let cleanText = rawTranscript;
         for (const w of WAKE_WORDS) {
           if (cleanText.toLowerCase().startsWith(w)) {
@@ -609,15 +671,13 @@ function startUnifiedVoiceEngine() {
 
         if (cleanText) {
           currentSpokenCommand = cleanText;
-          // Live real-time speech preview so user SEES Delulu hearing them!
           const capEl = $('cap');
           if (capEl) capEl.textContent = `🎙️ ${cleanText}`;
 
-          // Reset silence debounce (commits 1.2s after user finishes speaking)
           clearTimeout(speechSilenceTimer);
           speechSilenceTimer = setTimeout(() => {
             commitVoiceCommand();
-          }, 1200);
+          }, 1100);
         }
       }
     };
@@ -625,21 +685,21 @@ function startUnifiedVoiceEngine() {
     voiceEngine.onerror = (err) => {
       isVoiceEngineStarting = false;
       isVoiceEngineRunning = false;
-      console.warn("Unified voice engine event:", err.error);
-      
+      console.warn("[Voice Engine] Event:", err.error);
+
       if (err.error === 'not-allowed') {
-        console.warn("Microphone access pending user gesture or permission grant.");
+        console.warn("[Voice Engine] Microphone permission pending user gesture.");
         updateWakeWordUI(false);
         return;
       }
-      
+
       // Auto-restart smoothly on transient network, silence, or no-speech events
       if (isVoiceEngineActive && err.error !== 'aborted') {
         setTimeout(() => {
           if (isVoiceEngineActive && !isVoiceEngineRunning && coreState !== 'SPEAKING') {
             startUnifiedVoiceEngine();
           }
-        }, 400);
+        }, 300);
       }
     };
 
@@ -648,13 +708,13 @@ function startUnifiedVoiceEngine() {
       isVoiceEngineRunning = false;
       voiceEngine = null;
 
-      // Seamlessly keep listening forever in IDLE mode
-      if (isVoiceEngineActive && coreState !== 'SPEAKING') {
+      // Always restart immediately in IDLE mode to guarantee background listening
+      if (isVoiceEngineActive) {
         setTimeout(() => {
           if (isVoiceEngineActive && !isVoiceEngineRunning && coreState !== 'SPEAKING') {
             startUnifiedVoiceEngine();
           }
-        }, 200);
+        }, 150);
       }
     };
 
@@ -663,22 +723,26 @@ function startUnifiedVoiceEngine() {
     isVoiceEngineStarting = false;
     isVoiceEngineRunning = false;
     voiceEngine = null;
-    console.warn("Could not start unified voice engine:", err);
+    console.warn("[Voice Engine] Could not start:", err);
   }
 
-  // Ensure persistent watchdog is running to guarantee 100% uptime
+  // Persistent watchdog timer guarantees 100% uptime in background
   if (!voiceWatchdog) {
     voiceWatchdog = setInterval(() => {
       if (isVoiceEngineActive && !isVoiceEngineRunning && !isVoiceEngineStarting && coreState === 'IDLE') {
         startUnifiedVoiceEngine();
       }
-    }, 2000);
+    }, 1500);
   }
 }
 
 // Commits captured voice command and sends to orchestrator
 function commitVoiceCommand() {
   clearTimeout(speechSilenceTimer);
+  if (window._wakeListeningTimeout) {
+    clearTimeout(window._wakeListeningTimeout);
+    window._wakeListeningTimeout = null;
+  }
   const micBtn = $('mic');
   if (micBtn) micBtn.classList.remove('active');
 
@@ -693,19 +757,20 @@ function commitVoiceCommand() {
   }
 }
 
-// Master wake trigger (used by Ctrl+0, Canvas click, and Mic Button)
+// Master wake trigger (used by wake word detection, Ctrl+0, Canvas click, and Mic Button)
 function triggerWake() {
   cancelAssistantSpeech();
   unlockAudioEngine();
+  ensureAudioKeepAlive();
   playGeminiWakeChime();
   pulse = 1;
   currentSpokenCommand = '';
   clearTimeout(speechSilenceTimer);
 
-  // If voice engine was disabled, enable it on user request
   if (!isVoiceEngineActive) {
     isVoiceEngineActive = true;
     localStorage.setItem('delulu_voice_active', 'true');
+    updateWakeWordUI(true);
   }
 
   startUnifiedVoiceEngine();
@@ -715,6 +780,17 @@ function triggerWake() {
     setCoreState('LISTENING', 'Listening, go ahead...');
     const micBtn = $('mic');
     if (micBtn) micBtn.classList.add('active');
+
+    // Auto timeout back to ambient background listening after 8 seconds of silence
+    if (window._wakeListeningTimeout) clearTimeout(window._wakeListeningTimeout);
+    window._wakeListeningTimeout = setTimeout(() => {
+      if (coreState === 'LISTENING') {
+        console.log("[Wake Timeout] Returning to ambient background listening.");
+        setCoreState('IDLE');
+        const micBtn = $('mic');
+        if (micBtn) micBtn.classList.remove('active');
+      }
+    }, 8000);
   }, 100);
 }
 
@@ -742,13 +818,15 @@ function toggleWakeWordListener() {
     isVoiceEngineActive = true;
     localStorage.setItem('delulu_voice_active', 'true');
     unlockAudioEngine();
+    ensureAudioKeepAlive();
+    requestPersistentMicAccess();
     startUnifiedVoiceEngine();
   }
 }
 
 function resumeWakeWordListener() {
   if (isVoiceEngineActive && !isVoiceEngineRunning && !isVoiceEngineStarting && coreState === 'IDLE') {
-    setTimeout(startUnifiedVoiceEngine, 200);
+    setTimeout(startUnifiedVoiceEngine, 150);
   }
 }
 
@@ -756,14 +834,14 @@ function updateWakeWordUI(running = isVoiceEngineActive) {
   const btn = $('wake-toggle-btn');
   if (btn) {
     if (isVoiceEngineActive) {
-      btn.innerHTML = '🟢 <span style="font-weight:700;">WAKE & VOICE: ON</span> (Say “Hey Delulu” / “ഡെലുലു”)';
+      btn.innerHTML = '🟢 <span style="font-weight:700;">ALWAYS-ON MIC: ON</span> (Say “Delulu”)';
       btn.style.background = 'rgba(61, 232, 255, .18)';
       btn.style.borderColor = 'rgb(var(--acc))';
       btn.style.color = '#fff';
       btn.style.boxShadow = '0 0 16px rgba(var(--acc), .45)';
       btn.setAttribute('aria-pressed', 'true');
     } else {
-      btn.innerHTML = '👂 <span>WAKE WORD: OFF</span>';
+      btn.innerHTML = '👂 <span>ALWAYS-ON MIC: OFF</span>';
       btn.style.background = 'rgba(255, 255, 255, .05)';
       btn.style.borderColor = 'var(--line)';
       btn.style.color = 'var(--mut)';

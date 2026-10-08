@@ -70,12 +70,10 @@ def jarvis_loop(pause_event, registry, args):
                 speak("Powering down. Have a pleasant day, Sir.")
             break
 
-        # 4. Wake Word / Command Filtering
+        # 4. Strict Gemini Wake Word Gate: Only activate when user explicitly calls DELULU
         matched_wake = any(w in user_query for w in wake_words)
-        is_direct = any(cmd in user_query for cmd in direct_commands)
-
-        if not matched_wake and not is_direct:
-            print(f"[Ignored - awaiting wake word '{primary_wake}']: {user_query}")
+        if not args.text and not matched_wake:
+            print(f"[Ambient background speech ignored - awaiting 'delulu']: {user_query}")
             continue
 
         # Strip wake words from query
