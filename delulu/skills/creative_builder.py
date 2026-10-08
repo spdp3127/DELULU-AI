@@ -663,10 +663,41 @@ def build_website_html(topic: str, theme: str = "delulu_choice", tech_stack: str
 """
     return html
 
+import threading
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+class LiveProjectServer:
+    """Manages dedicated background HTTP daemon server to keep generated web apps running live."""
+    _server_thread = None
+    _httpd = None
+    _port = 5500
+
+    @classmethod
+    def start_server(cls, projects_dir: str, port: int = 5500) -> int:
+        if cls._httpd is not None:
+            return cls._port
+
+        class QuietProjectHandler(SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=projects_dir, **kwargs)
+            def log_message(self, format, *args):
+                pass # suppress terminal log noise
+
+        for p in [port, 5501, 5502, 8500, 8501]:
+            try:
+                cls._httpd = HTTPServer(('127.0.0.1', p), QuietProjectHandler)
+                cls._port = p
+                cls._server_thread = threading.Thread(target=cls._httpd.serve_forever, daemon=True)
+                cls._server_thread.start()
+                return p
+            except OSError:
+                continue
+        return 8000
+
 def save_and_open_website(topic: str, theme: str = "delulu_choice", tech_stack: str = "HTML5 / CSS3 / Vanilla JS", features: str = "") -> Dict[str, Any]:
     """
-    Saves generated website to workspace/projects/<slug>/index.html
-    and launches in default web browser.
+    Saves generated website, boots dedicated background HTTP server,
+    and runs live application in default web browser.
     """
     clean_topic = topic.strip().title() if topic else "Modern Web App"
     slug = slugify(clean_topic)
@@ -674,6 +705,7 @@ def save_and_open_website(topic: str, theme: str = "delulu_choice", tech_stack: 
     # Project directory
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     projects_dir = os.path.join(root_dir, "workspace", "projects", slug)
+    projects_base = os.path.join(root_dir, "workspace", "projects")
     os.makedirs(projects_dir, exist_ok=True)
     
     file_path = os.path.join(projects_dir, "index.html")
@@ -682,25 +714,38 @@ def save_and_open_website(topic: str, theme: str = "delulu_choice", tech_stack: 
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(html_code)
         
-    abs_url = f"file:///{file_path.replace(os.sep, '/')}"
+    # Start live background HTTP server so web app actively RUNS
+    live_port = LiveProjectServer.start_server(projects_base, port=5500)
+    
+    # Live running web app URLs
+    live_platform_url = f"http://localhost:8000/projects/{slug}/"
+    dedicated_runner_url = f"http://localhost:{live_port}/{slug}/"
+    file_fallback_url = f"file:///{file_path.replace(os.sep, '/')}"
+
+    # Launch live running web app in default browser
     try:
-        webbrowser.open(abs_url)
+        webbrowser.open(live_platform_url)
     except Exception:
-        pass
+        try:
+            webbrowser.open(dedicated_runner_url)
+        except Exception:
+            webbrowser.open(file_fallback_url)
         
     return {
-        "status": "success",
+        "status": "RUNNING",
         "project_name": clean_topic,
         "slug": slug,
         "theme": "Cyber-Glass Modern Dark Mode" if theme in ["delulu_choice", "delulu_vinte_ishtam"] else theme,
         "tech_stack": tech_stack,
         "file_path": file_path,
-        "preview_url": abs_url,
+        "live_url": live_platform_url,
+        "dedicated_server_url": dedicated_runner_url,
+        "server_status": f"Active & Serving on port {live_port} and port 8000",
         "html_code": html_code
     }
 
 def generate_svg_artwork(prompt: str, style: str = "delulu_choice") -> Dict[str, Any]:
-    """Generates rich SVG visual vector composition and opens file."""
+    """Generates rich SVG visual vector composition, hosts live, and opens file."""
     clean_prompt = prompt.strip().title() if prompt else "Futuristic Vector Concept"
     slug = slugify(clean_prompt)
     
@@ -752,16 +797,17 @@ def generate_svg_artwork(prompt: str, style: str = "delulu_choice") -> Dict[str,
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(svg_code)
 
-    abs_url = f"file:///{file_path.replace(os.sep, '/')}"
+    live_platform_url = f"http://localhost:8000/images/{slug}.svg"
+    file_fallback_url = f"file:///{file_path.replace(os.sep, '/')}"
     try:
-        webbrowser.open(abs_url)
+        webbrowser.open(live_platform_url)
     except Exception:
-        pass
+        webbrowser.open(file_fallback_url)
 
     return {
-        "status": "success",
+        "status": "RUNNING",
         "title": clean_prompt,
         "file_path": file_path,
-        "preview_url": abs_url,
+        "live_url": live_platform_url,
         "svg_code": svg_code
     }

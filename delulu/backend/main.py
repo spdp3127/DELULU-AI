@@ -68,6 +68,15 @@ app.include_router(rhasspy.router)
 def health_check():
     return {"status": "healthy", "service": "DELULU AI Platform", "version": "1.0.0"}
 
+# Live Projects & Applications Mounting (Runs websites as live web applications)
+projects_dir = os.path.abspath(os.path.join(root_dir, "workspace", "projects"))
+os.makedirs(projects_dir, exist_ok=True)
+app.mount("/projects", StaticFiles(directory=projects_dir, html=True), name="projects")
+
+images_dir = os.path.abspath(os.path.join(root_dir, "workspace", "images"))
+os.makedirs(images_dir, exist_ok=True)
+app.mount("/images", StaticFiles(directory=images_dir, html=True), name="images")
+
 # Static Frontend mounting
 frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 if os.path.exists(frontend_dir):

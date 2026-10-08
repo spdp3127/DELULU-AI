@@ -41,20 +41,60 @@ class RhasspySystemController:
         user_id = context.get("user_id")
         db = context.get("db")
 
-        # 0. Compound Open App and Calculate
+        # -2. Live Code & Script Execution
+        if name == "RunCode":
+            code_str = slots.get("code", "")
+            language = slots.get("language", "python")
+            res = skill_registry.execute_skill("code.run", {"code": code_str, "language": language}, context)
+            tools_run.append({"tool": "code.run", "args": {"code": code_str, "language": language}, "result": res})
+            res_str = res.get("result", "") if isinstance(res, dict) else str(res)
+            if active_lang == "Malayalam":
+                return f"കോഡ് ലൈവായി എക്സിക്യൂട്ട് ചെയ്തു:\n{res_str}", tools_run, None
+            elif active_lang == "Hindi":
+                return f"कोड सफलतापूर्वक निष्पादित किया गया:\n{res_str}", tools_run, None
+            return f"Code executed live:\n{res_str}", tools_run, None
+
+        # -1. Live Project & Web Application Runner
+        if name == "RunProject":
+            p_name = slots.get("project_name", "")
+            res = skill_registry.execute_skill("project.run", {"project_name": p_name}, context)
+            tools_run.append({"tool": "project.run", "args": {"project_name": p_name}, "result": res})
+            res_val = res.get("result", {}) if isinstance(res, dict) else {}
+            live_url = res_val.get("live_url", "http://localhost:8000/projects/") if isinstance(res_val, dict) else str(res)
+            if active_lang == "Malayalam":
+                return f"🟢 വെബ്‌സൈറ്റ് പ്രൊജക്റ്റ് '{p_name}' ലൈവ് സെർവറിൽ റൺ (RUN) ചെയ്യുന്നു: {live_url}", tools_run, None
+            elif active_lang == "Hindi":
+                return f"🟢 प्रोजेक्ट '{p_name}' लाइव सर्वर पर सक्रिय रूप से चल रहा है: {live_url}", tools_run, None
+            return f"🟢 Project '{p_name}' is now LIVE and RUNNING at: {live_url}", tools_run, None
+
+        # 0. Active App Runner
+        if name == "RunApp":
+            app_name = slots.get("app_name", "App")
+            task = slots.get("task", "")
+            res = skill_registry.execute_skill("app.run", {"app_name": app_name, "task": task}, context)
+            tools_run.append({"tool": "app.run", "args": {"app_name": app_name, "task": task}, "result": res})
+            res_str = res.get("result", "") if isinstance(res, dict) else str(res)
+            clean_display = app_name.capitalize()
+            if active_lang == "Malayalam":
+                return f"🟢 {clean_display} ഇപ്പോൾ തത്സമയം റൺ ചെയ്യുന്നു. {res_str}", tools_run, None
+            elif active_lang == "Hindi":
+                return f"🟢 {clean_display} अब सक्रिय रूप से चल रहा है। {res_str}", tools_run, None
+            return f"🟢 {clean_display} is now RUNNING. {res_str}", tools_run, None
+
+        # 0a. Compound Open App and Calculate
         # e.g. "open calculator and calculate 5+5", "open calculator and claculate 5+5"
         if name == "CompoundOpenAndCalculate":
             app_name = slots.get("app_name", "calculator")
             expr = slots.get("expression", "")
 
-            # 1. Open Calculator
-            res_open = skill_registry.execute_skill("app.open", {"app_name": app_name}, context)
-            tools_run.append({"tool": "app.open", "args": {"app_name": app_name}, "result": res_open})
+            # 1. Run / Open Calculator
+            res_open = skill_registry.execute_skill("app.run", {"app_name": app_name, "task": expr}, context)
+            tools_run.append({"tool": "app.run", "args": {"app_name": app_name, "task": expr}, "result": res_open})
 
             # 2. Calculate Math
             res_math = skill_registry.execute_skill("math.calculate", {"expression": expr}, context)
             tools_run.append({"tool": "math.calculate", "args": {"expression": expr}, "result": res_math})
-            res_str = res_math.get("result", expr)
+            res_str = res_math.get("result", expr) if isinstance(res_math, dict) else str(res_math)
 
             # 3. Type into open Windows Calculator
             try:

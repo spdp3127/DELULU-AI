@@ -123,13 +123,44 @@ class RhasspyNLUEngine:
         if not q_cmd:
             q_cmd = q_lower
 
+        # --- CODE & SCRIPT EXECUTION INTENTS ---
+        # e.g. "run python print(500 * 2)", "run code print('hello')", "python -c 'print(1+1)'", "run powershell Get-Process"
+        # Malayalam: "പൈത്തൺ റൺ ചെയ്യൂ print(500*2)", "കോഡ് റൺ ചെയ്യൂ"
+        m_code = re.search(r'^\s*(?:run|execute)\s+(?:python|py|code|script|powershell)\s+(.+)', q_cmd, re.DOTALL | re.IGNORECASE) or \
+                 re.search(r'^\s*python(?:\s+-c|\s+code)?\s+(.+)', q_cmd, re.DOTALL | re.IGNORECASE) or \
+                 re.search(r'(?:പൈത്തൺ|കോഡ്)\s+(?:റൺ\s+ചെയ്യു|റൺ\s+ചെയ്യുക|എക്സിക്യൂട്ട്\s+ചെയ്യു)(?:\s+|:\s*)(.+)', q_cmd, re.DOTALL | re.IGNORECASE)
+        if m_code:
+            code_body = m_code.group(1).strip()
+            if (code_body.startswith('"') and code_body.endswith('"')) or (code_body.startswith("'") and code_body.endswith("'")):
+                code_body = code_body[1:-1].strip()
+            lang = "powershell" if "powershell" in q_cmd.lower() else "python"
+            return RhasspyIntent(
+                name="RunCode",
+                confidence=0.99,
+                slots={"code": code_body, "language": lang},
+                text=clean_text
+            )
+
+        # --- LIVE PROJECT / WEB APP RUN INTENT ---
+        # e.g. "run project coffee-shop", "run website luxury-cars", "launch project my-site"
+        # Malayalam: "പ്രോജക്റ്റ് റൺ ചെയ്യൂ", "വെബ്‌സൈറ്റ് റൺ ചെയ്യൂ"
+        m_proj = re.search(r'^\s*(?:run|start|launch)\s+(?:project|website|site|web\s+app)\s+([a-zA-Z0-9_\-]+)', q_cmd, re.IGNORECASE) or \
+                 re.search(r'(?:പ്രോജക്റ്റ്|വെബ്‌സൈറ്റ്|വെബ്സൈറ്റ്)\s+റൺ\s+ചെയ്യു(?:\s+|:\s*)([a-zA-Z0-9_\-]+)', q_cmd, re.IGNORECASE)
+        if m_proj:
+            return RhasspyIntent(
+                name="RunProject",
+                confidence=0.99,
+                slots={"project_name": m_proj.group(1).strip()},
+                text=clean_text
+            )
+
         # --- COMPOUND INTENTS (MULTI-ACTION COMMANDS) ---
         # 1. Compound Open App and Calculate Math:
         # e.g. "open calculator and calculate 5+5", "open calculator and claculate 5+5", "open calc and 5+5"
         # Malayalam: "കാൽക്കുലേറ്റർ തുറന്ന് 5+5 കണക്കുകൂട്ടൂ", "കാൽക്കുലേറ്റർ തുറന്ന് 5+5 എത്രയാണ്", "calculator thurannu 5+5 calculate cheyyu"
         is_calc_keyword = bool(re.search(r'\b(?:calc|calculator|\u0915\u0948\u0932\u0915\u0941\u0932\u0947\u091f\u0930)\b', q_cmd, re.I)) or any(k in q_cmd for k in ["കാൽക്കു", "കൽക്കു", "ക്യാൽക്കു"])
         is_open_keyword = any(k in q_cmd for k in [
-            "open", "launch", "start", "തുറ", "thura", "ഓപ്പൺ", "खोलो"
+            "open", "launch", "start", "run", "തുറ", "thura", "ഓപ്പൺ", "खोलो"
         ])
         math_expr_match = re.search(r'([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)', q_cmd)
 
@@ -159,15 +190,15 @@ class RhasspyNLUEngine:
             )
 
         # --- SINGLE HARDWARE & DESKTOP INTENTS ---
-        # A. Open Desktop App or Website
-        # English: "open calculator", "open youtube", "open google", "launch notepad", "start chrome"
-        # Malayalam: "കാൽക്കുലേറ്റർ തുറക്കൂ", "യൂട്യൂബ് തുറക്കൂ", "നോട്ട്പാഡ് ഓപ്പൺ ചെയ്യൂ", "calculator thura", "open calc"
+        # A. Open or Run Desktop App or Website
+        # English: "open calculator", "run calculator", "launch notepad", "start chrome", "run chrome"
+        # Malayalam: "കാൽക്കുലേറ്റർ തുറക്കൂ", "കാൽക്കുലേറ്റർ റൺ ചെയ്യൂ", "യൂട്യൂബ് തുറക്കൂ", "നോട്ട്പാഡ് ഓപ്പൺ ചെയ്യൂ"
         # Hindi: "कैलकुलेटर खोलो", "यूट्यूब खोलो", "नोटपैड खोलो"
-        app_match = re.search(r'\b(?:open|launch|start)\s+(?:the\s+)?([a-zA-Z0-9\u0D00-\u0D7F\u0900-\u097F\s\.]+)', q_cmd)
-        app_mal_match = re.search(r'([a-zA-Z0-9\u0D00-\u0D7F]+)\s+(?:തുറക്കൂ|തുറക്കുക|തുറന്ന്\s+തരൂ|തുറ|ഓപ്പൺ\s+ചെയ്യു|ഓപ്പൺ\s+ചെയ്യുക|thura|open\s+cheyyu|thuranu\s+tha)', q_cmd)
-        app_hi_match = re.search(r'([a-zA-Z0-9\u0900-\u097F]+)\s+(?:खोलो|खोलिए|चालू\s+करो)', q_cmd)
+        app_match = re.search(r'\b(?:open|launch|start|run)\s+(?:the\s+)?([a-zA-Z0-9\u0D00-\u0D7F\u0900-\u097F\s\.]+)', q_cmd)
+        app_mal_match = re.search(r'([a-zA-Z0-9\u0D00-\u0D7F]+)\s+(?:തുറക്കൂ|തുറക്കുക|തുറന്ന്\s+തരൂ|തുറ|ഓപ്പൺ\s+ചെയ്യു|ഓപ്പൺ\s+ചെയ്യുക|thura|open\s+cheyyu|thuranu\s+tha|റൺ\s+ചെയ്യു|റൺ\s+ചെയ്യുക|റൺ)', q_cmd)
+        app_hi_match = re.search(r'([a-zA-Z0-9\u0900-\u097F]+)\s+(?:खोलो|खोलिए|चालू\s+करो|रन\s+करो)', q_cmd)
 
-        if (app_match or app_mal_match or app_hi_match) and not any(k in q_cmd for k in ["calculate", "claculate", "compute", "math", "tab", "file", "+", "-", "*", "/", "കണക്കു"]):
+        if (app_match or app_mal_match or app_hi_match) and not any(k in q_cmd for k in ["python", "script", "project", "website", "calculate", "claculate", "compute", "math", "tab", "file", "+", "-", "*", "/", "കണക്കു"]):
             raw_app = (app_match.group(1) if app_match else (app_mal_match.group(1) if app_mal_match else app_hi_match.group(1))).strip()
             # Strip accidental conjunctions or trailing words
             raw_app = re.sub(r'\s+(?:and|please|now|app|window)\b.*', '', raw_app).strip()
@@ -188,8 +219,9 @@ class RhasspyNLUEngine:
             elif any(w in raw_app for w in ["ക്രോം", "ബ്രൗസർ", "chrome", "browser", "क्रोम"]):
                 canonical_app = "chrome"
 
+            is_run_action = bool(re.search(r'\b(?:run|റൺ|रन)\b', q_cmd))
             return RhasspyIntent(
-                name="OpenApp",
+                name="RunApp" if is_run_action else "OpenApp",
                 confidence=0.98,
                 slots={"app_name": canonical_app},
                 text=clean_text
@@ -297,7 +329,7 @@ class RhasspyNLUEngine:
         math_regex = r'(?:(?:now\s+)?c[al]{2}culate|compute|solve|what\s+is|value\s+of)?\s*([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)'
         norm_math = q_cmd.replace('times', '*').replace('plus', '+').replace('minus', '-').replace('divided by', '/')
         m_calc = re.search(math_regex, norm_math)
-        if m_calc and not re.search(r'^\s*open\b', q_cmd):
+        if m_calc and not re.search(r'^\s*(?:open|run|python|execute|code|script|powershell)\b', q_cmd):
             expr = m_calc.group(1).strip()
             if re.search(r'[\+\-\*\/\^xX÷%]', expr) and re.search(r'\d', expr):
                 return RhasspyIntent(

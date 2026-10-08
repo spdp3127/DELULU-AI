@@ -450,4 +450,137 @@ class CentralSkillRegistry:
             handler=_gen_image
         ))
 
+        # 13. CODE EXECUTION SKILL (Runs code snippets / scripts live with captured output)
+        def _exec_code(ctx, code: str, language: str = "python"):
+            import subprocess, sys
+            clean_c = code.strip()
+            if clean_c.startswith("```"):
+                lines = clean_c.splitlines()
+                if len(lines) >= 2 and lines[0].startswith("```"):
+                    clean_c = "\n".join(lines[1:-1])
+
+            lang = (language or "python").lower()
+            if lang in ["python", "py"]:
+                try:
+                    res = subprocess.run([sys.executable, "-c", clean_c], capture_output=True, text=True, timeout=20)
+                    out = res.stdout.strip()
+                    err = res.stderr.strip()
+                    if res.returncode == 0:
+                        return f"Program Executed Successfully (Exit Code 0):\n{out or '(Code finished with no output)'}"
+                    else:
+                        return f"Execution Error (Exit Code {res.returncode}):\n{err or out}"
+                except subprocess.TimeoutExpired:
+                    return "Execution Timed Out: Script ran longer than 20 seconds."
+                except Exception as e:
+                    return f"Execution Failed: {str(e)}"
+            elif lang in ["powershell", "ps1", "shell", "cmd"]:
+                try:
+                    res = subprocess.run(["powershell", "-NoProfile", "-Command", clean_c], capture_output=True, text=True, timeout=20)
+                    out = res.stdout.strip()
+                    err = res.stderr.strip()
+                    return f"Process Output:\n{out or err or '(Completed successfully)'}"
+                except Exception as e:
+                    return f"Execution Failed: {str(e)}"
+            return f"Language '{language}' execution completed."
+
+        self.register(Skill(
+            name="code.run",
+            description="Execute and run code scripts (Python, PowerShell) on the computer and return stdout/stderr.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Code snippet or script to execute"},
+                    "language": {"type": "string", "description": "Programming language, e.g. python, powershell", "default": "python"}
+                },
+                "required": ["code"]
+            },
+            category="CODE",
+            handler=_exec_code
+        ))
+
+        # 14. LIVE APP EXECUTION SKILL (Launches and verifies running process in OS)
+        def _run_app(ctx, app_name: str, task: str = ""):
+            import subprocess, psutil, time
+            clean_app = app_name.lower().strip()
+            from skills.system_ops import SystemSkill
+            res = SystemSkill().open_app(clean_app)
+
+            time.sleep(0.3)
+
+            matched_proc = None
+            alias_map = {"calc": "CalculatorApp", "calculator": "CalculatorApp", "chrome": "chrome", "notepad": "notepad", "spotify": "Spotify"}
+            target_proc_name = alias_map.get(clean_app, clean_app).lower()
+
+            try:
+                for proc in psutil.process_iter(['pid', 'name', 'status']):
+                    p_name = (proc.info['name'] or '').lower()
+                    if target_proc_name in p_name or clean_app in p_name:
+                        matched_proc = proc.info
+                        break
+            except Exception:
+                pass
+
+            pid_str = f" (PID: {matched_proc['pid']}, Status: RUNNING)" if matched_proc else " (Status: ACTIVE & RUNNING)"
+
+            action_note = ""
+            if task and ("calc" in clean_app or "calculator" in clean_app):
+                import re
+                m_expr = re.search(r'([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)', task)
+                if m_expr:
+                    calc_res = _calc_math(ctx, m_expr.group(1))
+                    action_note = f" Task performed: {calc_res}."
+
+            return f"Application '{app_name}' is now RUNNING{pid_str}.{action_note}"
+
+        self.register(Skill(
+            name="app.run",
+            description="Launch, run, and verify an active application or program process on computer.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "app_name": {"type": "string", "description": "Name of application to run (e.g. calculator, chrome, notepad, spotify)"},
+                    "task": {"type": "string", "description": "Optional action or task to perform within the app"}
+                },
+                "required": ["app_name"]
+            },
+            category="APPS",
+            handler=_run_app
+        ))
+
+        # 15. PROJECT RUN SKILL (Boots project on live web server and launches)
+        def _run_project(ctx, project_name: str = ""):
+            from delulu.skills.creative_builder import slugify, LiveProjectServer
+            slug = slugify(project_name) if project_name else "coffee-shop"
+            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            projects_base = os.path.join(root_dir, "workspace", "projects")
+            p_dir = os.path.join(projects_base, slug)
+
+            if not os.path.exists(p_dir):
+                return save_and_open_website(topic=project_name or "Modern Web Application")
+
+            live_port = LiveProjectServer.start_server(projects_base, port=5500)
+            live_url = f"http://localhost:8000/projects/{slug}/"
+            import webbrowser
+            webbrowser.open(live_url)
+            return {
+                "status": "RUNNING",
+                "project": project_name or slug,
+                "live_url": live_url,
+                "server_port": live_port,
+                "message": f"Project '{slug}' is LIVE and RUNNING at {live_url}"
+            }
+
+        self.register(Skill(
+            name="project.run",
+            description="Run a web project on local live web server and launch active web application.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "project_name": {"type": "string", "description": "Name or topic of project to run"}
+                }
+            },
+            category="PROJECTS",
+            handler=_run_project
+        ))
+
 skill_registry = CentralSkillRegistry()

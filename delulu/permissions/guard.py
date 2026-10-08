@@ -35,6 +35,8 @@ class PermissionGuard:
         "code.test": "MEDIUM",
         "website.generate": "MEDIUM",
         "image.generate": "MEDIUM",
+        "app.run": "MEDIUM",
+        "project.run": "MEDIUM",
 
         # HIGH Risk (State changes, file deletions, external messaging)
         "files.delete": "HIGH",
@@ -42,6 +44,7 @@ class PermissionGuard:
         "email.send": "HIGH",
         "whatsapp.send": "HIGH",
         "app.close": "HIGH",
+        "code.run": "HIGH",
         "system.volume": "HIGH",
         "code.run": "HIGH",
         "code.edit": "HIGH",
