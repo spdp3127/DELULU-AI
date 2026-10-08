@@ -6,6 +6,27 @@ import subprocess
 from typing import List, Dict, Any, Callable
 from core.skill import Skill
 
+def get_browser_exe(name="chrome"):
+    import os
+    if name == "chrome":
+        candidates = [
+            r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+            r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+            os.path.expandvars(r'%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe'),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+    elif name in ["edge", "msedge"]:
+        candidates = [
+            r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+            r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+    return None
+
 class SystemSkill(Skill):
     @property
     def name(self) -> str:
@@ -92,6 +113,8 @@ class SystemSkill(Skill):
         import webbrowser
         import urllib.parse
         import re
+        import os
+        import subprocess
         try:
             clean_name = app_name.lower().strip()
 
@@ -114,57 +137,119 @@ class SystemSkill(Skill):
                 "linkedin": "https://www.linkedin.com"
             }
 
+            chrome_exe = get_browser_exe("chrome")
+            edge_exe = get_browser_exe("edge")
+
+            def _launch_url(target_url):
+                if chrome_exe:
+                    try:
+                        subprocess.Popen([chrome_exe, target_url])
+                        return
+                    except Exception:
+                        pass
+                if edge_exe:
+                    try:
+                        subprocess.Popen([edge_exe, target_url])
+                        return
+                    except Exception:
+                        pass
+                try:
+                    os.startfile(target_url)
+                except Exception:
+                    webbrowser.open(target_url)
+
             # YouTube search if query included, e.g. "youtube mr beast" or "youtube search mr beast"
             if "youtube" in clean_name and any(clean_name.startswith(p) for p in ["youtube ", "youtube search ", "search youtube "]):
                 q_part = re.sub(r'^(?:youtube\s+(?:search\s+)?|search\s+youtube\s+)', '', clean_name).strip()
                 if q_part:
-                    webbrowser.open(f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(q_part)}")
-                    return json.dumps({"status": "success", "app": "youtube", "query": q_part})
+                    yt_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(q_part)}"
+                    _launch_url(yt_url)
+                    return json.dumps({"status": "success", "app": "youtube", "url": yt_url, "query": q_part})
 
             # Google search if query included
             if "google" in clean_name and any(clean_name.startswith(p) for p in ["google ", "google search ", "search google "]):
                 q_part = re.sub(r'^(?:google\s+(?:search\s+)?|search\s+google\s+)', '', clean_name).strip()
                 if q_part:
-                    webbrowser.open(f"https://www.google.com/search?q={urllib.parse.quote_plus(q_part)}")
-                    return json.dumps({"status": "success", "app": "google", "query": q_part})
+                    g_url = f"https://www.google.com/search?q={urllib.parse.quote_plus(q_part)}"
+                    _launch_url(g_url)
+                    return json.dumps({"status": "success", "app": "google", "url": g_url, "query": q_part})
 
             if clean_name in websites:
-                webbrowser.open(websites[clean_name])
-                return json.dumps({"status": "success", "app": clean_name, "url": websites[clean_name]})
+                w_url = websites[clean_name]
+                _launch_url(w_url)
+                return json.dumps({"status": "success", "app": clean_name, "url": w_url})
 
             if clean_name.startswith("http://") or clean_name.startswith("https://") or clean_name.endswith(".com") or clean_name.endswith(".org") or clean_name.endswith(".in"):
                 url = clean_name if clean_name.startswith("http") else f"https://{clean_name}"
-                webbrowser.open(url)
+                _launch_url(url)
                 return json.dumps({"status": "success", "app": clean_name, "url": url})
 
             # 2. Desktop Windows Applications
-            alias_map = {
-                "calculator": "calc.exe",
-                "calc": "calc.exe",
-                "browser": "start chrome || start msedge",
-                "chrome": "start chrome",
-                "edge": "start msedge",
-                "notepad": "notepad.exe",
-                "notes": "notepad.exe",
-                "explorer": "explorer.exe",
-                "files": "explorer.exe",
-                "settings": "start ms-settings:",
-                "terminal": "start wt || start cmd",
-                "cmd": "start cmd",
-                "powershell": "start powershell",
-                "paint": "mspaint.exe",
-                "task manager": "taskmgr.exe",
-                "taskmgr": "taskmgr.exe",
-                "control panel": "control.exe",
-                "spotify": "start spotify || start https://open.spotify.com",
-                "code": "code",
-                "vscode": "code",
-                "visual studio code": "code",
-                "camera": "start microsoft.windows.camera:",
-            }
+            if clean_name in ["chrome", "google chrome", "browser"]:
+                if chrome_exe:
+                    subprocess.Popen([chrome_exe])
+                    return json.dumps({"status": "success", "app": "chrome", "url": "https://www.google.com"})
+                elif edge_exe:
+                    subprocess.Popen([edge_exe])
+                    return json.dumps({"status": "success", "app": "edge"})
+                else:
+                    _launch_url("https://www.google.com")
+                    return json.dumps({"status": "success", "app": "chrome", "url": "https://www.google.com"})
 
-            cmd = alias_map.get(clean_name, f"start {app_name}")
-            subprocess.Popen(cmd, shell=True)
+            if clean_name in ["edge", "msedge", "microsoft edge"]:
+                if edge_exe:
+                    subprocess.Popen([edge_exe])
+                else:
+                    subprocess.Popen("start msedge", shell=True)
+                return json.dumps({"status": "success", "app": "edge"})
+
+            if clean_name in ["calc", "calculator", "കാൽക്കുലേറ്റർ", "കൽക്കുലേറ്റർ", "कैलकुलेटर"]:
+                try:
+                    os.startfile("calc.exe")
+                except Exception:
+                    subprocess.Popen("calc.exe", shell=True)
+                return json.dumps({"status": "success", "app": "calculator"})
+
+            if clean_name in ["notepad", "notes", "note", "നോട്ട്പാഡ്", "नोटपैड"]:
+                try:
+                    subprocess.Popen("notepad.exe")
+                except Exception:
+                    os.startfile("notepad.exe")
+                return json.dumps({"status": "success", "app": "notepad"})
+
+            if clean_name in ["task manager", "taskmgr"]:
+                subprocess.Popen("taskmgr.exe")
+                return json.dumps({"status": "success", "app": "task manager"})
+
+            if clean_name in ["explorer", "files", "file explorer"]:
+                subprocess.Popen("explorer.exe")
+                return json.dumps({"status": "success", "app": "explorer"})
+
+            if clean_name in ["cmd", "command prompt"]:
+                subprocess.Popen("start cmd", shell=True)
+                return json.dumps({"status": "success", "app": "cmd"})
+
+            if clean_name in ["powershell"]:
+                subprocess.Popen("start powershell", shell=True)
+                return json.dumps({"status": "success", "app": "powershell"})
+
+            if clean_name in ["settings", "windows settings"]:
+                os.startfile("ms-settings:")
+                return json.dumps({"status": "success", "app": "settings"})
+
+            if clean_name in ["camera"]:
+                os.startfile("microsoft.windows.camera:")
+                return json.dumps({"status": "success", "app": "camera"})
+
+            if clean_name in ["spotify"]:
+                try:
+                    subprocess.Popen("start spotify", shell=True)
+                except Exception:
+                    _launch_url("https://open.spotify.com")
+                return json.dumps({"status": "success", "app": "spotify", "url": "https://open.spotify.com"})
+
+            # Fallback
+            subprocess.Popen(f"start {app_name}", shell=True)
             return json.dumps({"status": "success", "app": app_name})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})

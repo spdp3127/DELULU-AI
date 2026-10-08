@@ -955,6 +955,35 @@ async function runDeluluCommand(cmdText) {
     if (asstMsg.tool_calls && asstMsg.tool_calls.length) {
       setCoreState('EXECUTING', `Executed: ${asstMsg.tool_calls.map(t => t.tool).join(', ')}`);
       toolTag = asstMsg.tool_calls.map(t => t.tool).join(', ');
+
+      // Browser Web App & Live URL Opener
+      for (const tc of asstMsg.tool_calls) {
+        let targetUrl = tc.result?.url || tc.result?.live_url;
+        const appName = (tc.args?.app_name || '').toLowerCase().trim();
+        const webMap = {
+          'youtube': 'https://www.youtube.com',
+          'google': 'https://www.google.com',
+          'whatsapp': 'https://web.whatsapp.com',
+          'gmail': 'https://mail.google.com',
+          'github': 'https://github.com',
+          'chatgpt': 'https://chatgpt.com',
+          'instagram': 'https://www.instagram.com',
+          'twitter': 'https://x.com',
+          'x': 'https://x.com',
+          'spotify': 'https://open.spotify.com',
+          'netflix': 'https://www.netflix.com'
+        };
+        if (!targetUrl && webMap[appName]) {
+          targetUrl = webMap[appName];
+        }
+        if (targetUrl) {
+          try {
+            window.open(targetUrl, '_blank');
+          } catch(e) {
+            console.warn('Could not launch URL popup:', e);
+          }
+        }
+      }
     }
 
     // 3. Immediately display in history feed and set state to SPEAKING

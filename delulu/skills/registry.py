@@ -8,6 +8,12 @@ from delulu.verification.engine import verification_engine
 from delulu.logs.audit_logger import audit_logger
 from delulu.skills.creative_builder import save_and_open_website, generate_svg_artwork
 
+try:
+    import pyautogui
+    pyautogui.FAILSAFE = False
+except Exception:
+    pass
+
 class Skill:
     def __init__(self, name: str, description: str, parameters: Dict[str, Any], handler: Callable, category: str = "SYSTEM"):
         self.name = name
@@ -240,7 +246,7 @@ class CentralSkillRegistry:
         ))
 
         # 6. DESKTOP & SYSTEM CONTROLS
-        def _system_volume(ctx, level: int):
+        def _system_volume(ctx, level: int = 50):
             gateway = ctx.get("desktop_gateway")
             user_id = ctx.get("user_id")
             if gateway and gateway.is_user_connected(user_id):
@@ -262,7 +268,12 @@ class CentralSkillRegistry:
             if gateway and gateway.is_user_connected(user_id):
                 return gateway.send_command_sync(user_id, "app.open", {"app_name": app_name})
             from skills.system_ops import SystemSkill
-            return SystemSkill().open_app(app_name)
+            res = SystemSkill().open_app(app_name)
+            try:
+                import json
+                return json.loads(res) if isinstance(res, str) else res
+            except Exception:
+                return res
 
         self.register(Skill(
             name="app.open",
