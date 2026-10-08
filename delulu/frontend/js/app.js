@@ -2,7 +2,9 @@
 // DELULU // J.A.R.V.I.S. - REAL-LIFE AI ASSISTANT FRONTEND ENGINE
 // ==========================================================================
 
-const API_BASE = "";
+const API_BASE = (window.location.protocol === "http:" || window.location.protocol === "https:") && (window.location.port === "8000" || window.location.port === "")
+  ? ""
+  : "http://localhost:8000";
 
 // Global Application State
 const state = {
@@ -98,15 +100,39 @@ async function api(endpoint, options = {}) {
     headers["Content-Type"] = "application/json";
   }
 
-  const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+  } catch (err) {
+    // Retry once against explicit localhost:8000 if relative request failed
+    if (API_BASE === "") {
+      try {
+        res = await fetch(`http://localhost:8000${endpoint}`, { ...options, headers });
+      } catch (retryErr) {
+        throw new Error("Cannot connect to DELULU server. Ensure server is running at http://localhost:8000.");
+      }
+    } else {
+      throw new Error("Cannot connect to DELULU server. Ensure server is running at http://localhost:8000.");
+    }
+  }
 
   if (res.status === 401) {
     const isAuthRoute = endpoint.includes("/auth/login") || endpoint.includes("/auth/register") || endpoint.includes("/auth/guest") || endpoint.includes("/auth/default");
     if (!isAuthRoute) {
       try {
-        const authData = await api("/api/v1/auth/default", { method: "POST" });
-        state.token = authData.access_token;
-        localStorage.setItem("delulu_token", authData.access_token);
+        const authBase = API_BASE || "http://localhost:8000";
+        const authData = await (await fetch(`${authBase}/api/v1/auth/default`, { method: "POST" })).json();
+        if (authData && authData.access_token) {
+          state.token = authData.access_token;
+          localStorage.setItem("delulu_token", authData.access_token);
+          headers["Authorization"] = `Bearer ${state.token}`;
+          const retryRes = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+          if (!retryRes.ok) {
+            const err = await retryRes.json().catch(() => ({ detail: "Request failed" }));
+            throw new Error(err.detail || "Request failed");
+          }
+          return retryRes.json().catch(() => ({}));
+        }
       } catch (err) {
         console.warn("Silent token refresh failed:", err);
       }

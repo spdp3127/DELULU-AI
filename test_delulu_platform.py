@@ -114,8 +114,57 @@ def run_delulu_tests():
     assert len(logs) > 0, "Expected audit logs to be recorded!"
     print(f"[11] User Audit Trail: PASS ({len(logs)} tamper-evident audit events recorded)")
 
+    # 12. Rhasspy Engine Status & Capabilities
+    rhasspy_stat = client.get("/api/v1/rhasspy/status")
+    assert rhasspy_stat.status_code == 200
+    stat_data = rhasspy_stat.json()
+    assert stat_data["status"] == "online"
+    assert "OpenApp" in stat_data["intents"]
+    assert "hey delulu" in stat_data["hotwords"]
+    print(f"[12] Rhasspy Engine Status: PASS (NLU: {stat_data['nlu_engine']}, Wake Word: {stat_data['wake_word_engine']})")
+
+    # 13. Rhasspy Human Language Understanding (NLU) Parsing
+    nlu_tests = [
+        ("open calculator", "OpenApp", {"app_name": "calculator"}),
+        ("now calculate 5+5", "CalculateMath", {"expression": "5+5"}),
+        ("set volume to 80", "ChangeVolume", {"volume": 80}),
+        ("take a screenshot", "TakeScreenshot", {}),
+        ("what time is it", "GetTime", {})
+    ]
+    for text_query, expected_intent, expected_slots in nlu_tests:
+        nlu_res = client.post("/api/v1/rhasspy/nlu", json={"text": text_query})
+        assert nlu_res.status_code == 200, f"NLU failed for {text_query}"
+        parsed = nlu_res.json()
+        assert parsed["matched"] is True, f"Failed to match {text_query}"
+        assert parsed["intent"] == expected_intent, f"Wrong intent for {text_query}: got {parsed['intent']}, expected {expected_intent}"
+        for k, v in expected_slots.items():
+            assert parsed["slots"].get(k) == v, f"Slot mismatch for {text_query}: {parsed['slots']}"
+    print("[13] Rhasspy Human Language Understanding (NLU): PASS (All 5 slot/intent grammars matched)")
+
+    # 14. Rhasspy System Control Execution
+    sys_res = client.post("/api/v1/rhasspy/command", json={"text": "now calculate 5+5"}, headers=headers_a)
+    assert sys_res.status_code == 200, f"System control failed: {sys_res.text}"
+    sys_data = sys_res.json()
+    assert sys_data["success"] is True
+    assert "10" in sys_data["spoken_reply"]
+    print(f"[14] Rhasspy System Control Execution: PASS (Result: '{sys_data['spoken_reply']}')")
+
+    # 15. Rhasspy Hermes Hotword Trigger
+    hw_res = client.post("/api/v1/rhasspy/hotword", json={"hotword": "delulu"})
+    assert hw_res.status_code == 200
+    assert hw_res.json()["hermes_topic"] == "hermes/hotword/delulu/detected"
+    print("[15] Rhasspy Hermes Hotword Detection: PASS (hermes/hotword/delulu/detected)")
+
+    # 16. Chat Integration with Rhasspy Brain
+    chat_rhasspy = client.post("/api/v1/chat/send", json={"content": "now calculate 5+5"}, headers=headers_a)
+    assert chat_rhasspy.status_code == 200
+    msg_body = chat_rhasspy.json()["assistant_message"]
+    assert msg_body["brain"] == "RHASSPY_ENGINE"
+    assert "10" in msg_body["content"]
+    print(f"[16] End-to-End Rhasspy Brain Orchestration: PASS (Brain: {msg_body['brain']}, Spoken: '{msg_body['content']}')")
+
     print("\n" + "=" * 65)
-    print("  ALL 11 DELULU PLATFORM SUBSYSTEMS VERIFIED & PASSING!")
+    print("  ALL 16 DELULU & RHASSPY SUBSYSTEMS VERIFIED & PASSING!")
     print("=" * 65)
 
 if __name__ == "__main__":

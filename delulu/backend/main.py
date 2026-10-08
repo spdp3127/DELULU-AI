@@ -28,6 +28,7 @@ from delulu.backend.routers import (
     skills,
     voice,
     system,
+    rhasspy,
 )
 
 # Create database tables
@@ -61,6 +62,7 @@ app.include_router(activity.router)
 app.include_router(skills.router)
 app.include_router(voice.router)
 app.include_router(system.router)
+app.include_router(rhasspy.router)
 
 @app.get("/api/health")
 def health_check():

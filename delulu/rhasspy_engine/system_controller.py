@@ -1,0 +1,125 @@
+import datetime
+from typing import Dict, Any, List, Tuple, Optional
+from delulu.skills.registry import skill_registry
+from delulu.rhasspy_engine.nlu import RhasspyIntent
+from delulu.memory.memory_service import memory_service
+
+RHASSPY_LANG_MAP = {
+    'hindi': ('Hindi', 'hi-IN', 'ज़रूर, अब से मैं आपसे हिंदी में बात करूँगा।'),
+    'malayalam': ('Malayalam', 'ml-IN', 'തീർച്ചയായും, ഇനി മുതൽ ഞാൻ നിങ്ങളോട് മലയാളത്തിൽ സംസാരിക്കാം.'),
+    'japanese': ('Japanese', 'ja-JP', 'かしこまりました。これからは日本語でお話しします。'),
+    'japanees': ('Japanese', 'ja-JP', 'かしこまりました。これからは日本語でお話しします。'),
+    'chinese': ('Chinese', 'zh-CN', '好的，从现在开始我将用中文与您交流。'),
+    'chinees': ('Chinese', 'zh-CN', '好的，从现在开始我将用中文与您交流。'),
+    'korean': ('Korean', 'ko-KR', '네, 알겠습니다. 이제부터 한국어로 말씀드리겠습니다.'),
+    'korea': ('Korean', 'ko-KR', '네, 알겠습니다. ഇനി മുതൽ ഞാൻ കൊറിയനിൽ സംസാരിക്കാം.'),
+    'english': ('English', 'en-US', 'Understood, I will now speak to you in English.'),
+    'spanish': ('Spanish', 'es-ES', '¡Claro! A partir de ahora te responderé en español.'),
+    'french': ('French', 'fr-FR', 'Bien sûr, je vais maintenant vous parler en français.'),
+    'german': ('German', 'de-DE', 'Natürlich, ich werde ab jetzt auf Deutsch mit Ihnen sprechen.'),
+    'arabic': ('Arabic', 'ar-SA', 'بالتأكيد، سأتحدث معك باللغة العربية من الآن فصاعدًا.'),
+    'tamil': ('Tamil', 'ta-IN', 'நிச்சயமாக, இனி நான் உங்களிடம் தமிழில் பேசுகிறேன்.')
+}
+
+class RhasspySystemController:
+    """
+    Rhasspy System Control & Intent Dispatcher.
+    Executes real system actions, desktop automation, hardware control,
+    and memory persistence for recognized Rhasspy intents.
+    """
+
+    def handle_intent(self, intent: RhasspyIntent, context: Dict[str, Any], active_lang: str = "English") -> Tuple[str, List[Dict[str, Any]], Optional[str]]:
+        """
+        Executes real system action matching the intent.
+        Returns: (spoken_reply, tool_results_list, updated_lang_code)
+        """
+        tools_run = []
+        name = intent.name
+        slots = intent.slots
+        user_id = context.get("user_id")
+        db = context.get("db")
+
+        # 1. Open Desktop Application
+        if name == "OpenApp":
+            app_name = slots.get("app_name", "App")
+            res = skill_registry.execute_skill("app.open", {"app_name": app_name}, context)
+            tools_run.append({"tool": "app.open", "args": {"app_name": app_name}, "result": res})
+            return f"A {app_name} window is now open.", tools_run, None
+
+        # 2. Change System Volume
+        if name == "ChangeVolume":
+            vol_level = slots.get("volume", 50)
+            res = skill_registry.execute_skill("system.volume", {"level": vol_level}, context)
+            tools_run.append({"tool": "system.volume", "args": {"level": vol_level}, "result": res})
+            return f"System volume set to {vol_level}%.", tools_run, None
+
+        # 3. Take Desktop Screenshot
+        if name == "TakeScreenshot":
+            res = skill_registry.execute_skill("system.screenshot", {}, context)
+            tools_run.append({"tool": "system.screenshot", "args": {}, "result": res})
+            return f"{res.get('result', 'Screenshot captured to Desktop.')}.", tools_run, None
+
+        # 4. Lock Screen
+        if name == "LockScreen":
+            res = skill_registry.execute_skill("system.lock", {}, context)
+            tools_run.append({"tool": "system.lock", "args": {}, "result": res})
+            return "Workstation screen locked.", tools_run, None
+
+        # 5. Hardware Status & Telemetry
+        if name == "SystemTelemetry":
+            res = skill_registry.execute_skill("system.telemetry", {}, context)
+            tools_run.append({"tool": "system.telemetry", "args": {}, "result": res})
+            return f"{res.get('result', 'Hardware telemetry collected.')}", tools_run, None
+
+        # 6. Time Query
+        if name == "GetTime":
+            res = skill_registry.execute_skill("time.get", {}, context)
+            time_val = res.get("result", datetime.datetime.now().strftime("%I:%M:%S %p"))
+            tools_run.append({"tool": "time.get", "args": {}, "result": res})
+            return f"The current time is {time_val}.", tools_run, None
+
+        # 7. Date Query
+        if name == "GetDate":
+            res = skill_registry.execute_skill("date.get", {}, context)
+            date_val = res.get("result", datetime.datetime.now().strftime("%A, %B %d, %Y"))
+            tools_run.append({"tool": "date.get", "args": {}, "result": res})
+            return f"Today is {date_val}.", tools_run, None
+
+        # 8. Math Calculation
+        if name == "CalculateMath":
+            expr = slots.get("expression", "")
+            res = skill_registry.execute_skill("math.calculate", {"expression": expr}, context)
+            res_str = res.get("result", expr)
+            tools_run.append({"tool": "math.calculate", "args": {"expression": expr}, "result": res})
+            return f"{res_str}.", tools_run, None
+
+        # 9. Language Switch Request
+        if name == "SwitchLanguage":
+            target_l = slots.get("language", "").lower()
+            if target_l in RHASSPY_LANG_MAP:
+                l_name, l_code, l_reply = RHASSPY_LANG_MAP[target_l]
+                if db and user_id:
+                    memory_service.write_memory(
+                        db=db,
+                        user_id=user_id,
+                        content=f"Preferred conversation language: {l_name}",
+                        memory_type="preference",
+                        category="language"
+                    )
+                return l_reply, [], l_code
+
+        # 10. Identity
+        if name == "Identity":
+            if active_lang == "Malayalam":
+                reply = "ഞാൻ DELULU ആണ്, SPDP Company നിർമ്മിച്ചതാണ്."
+            elif active_lang == "Hindi":
+                reply = "मैं DELULU हूँ, SPDP Company द्वारा निर्मित।"
+            elif active_lang == "Japanese":
+                reply = "私はDELULUです。SPDP Companyによって開発されました。"
+            else:
+                reply = "I am DELULU, made by SPDP company."
+            return reply, [], None
+
+        return f"Intent '{name}' processed successfully.", tools_run, None
+
+rhasspy_system_controller = RhasspySystemController()

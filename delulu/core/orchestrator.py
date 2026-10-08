@@ -10,6 +10,7 @@ from delulu.memory.memory_service import memory_service
 from delulu.skills.registry import skill_registry
 from delulu.permissions.guard import permission_guard
 from delulu.desktop_agent.gateway import desktop_gateway
+from delulu.rhasspy_engine import rhasspy_nlu, rhasspy_system_controller
 
 LANG_MAP = {
     'hindi': ('Hindi', 'hi-IN', 'ज़रूर, अब से मैं आपसे हिंदी में बात करूँगा।'),
@@ -237,39 +238,19 @@ class Orchestrator:
                     active_lang_code = LANG_MAP[pref_name][1]
                     break
 
-        # Fast-Path 1: Instant Identity Query (Default English, unless user explicitly asked or is in another language)
-        q_norm = re.sub(r'[^a-zA-Z0-9\s]', '', user_text.lower().strip())
-        q_lower = user_text.lower().strip()
-        is_identity = (
-            any(k in q_norm for k in [
-                "who are you", "who made you", "who created you", "who is delulu",
-                "what is your name", "who developed you", "who built you",
-                "aaranu nee", "nee aaranu", "ninne aara", "aara undakki",
-                "undakkiyath", "undakkiyathu", "undakkiye", "undakkiyatha",
-                "create cheytha", "create cheythath", "ninne undakkiya"
-            ])
-            or any(k in q_lower for k in [
-                "who are you", "who made you", "who created you", "who is delulu", "aaranu nee", "nee aaranu", "ninne aara"
-            ])
-            or any(k in user_text for k in [
-                "ആരാണ്", "ഉണ്ടാക്കിയത്", "ഉണ്ടാക്കിയ"
-            ])
-        )
-        if is_identity:
-            if active_lang == "Malayalam":
-                fast_reply = "ഞാൻ DELULU ആണ്, SPDP Company നിർമ്മിച്ചതാണ്."
-            elif active_lang == "Hindi":
-                fast_reply = "मैं DELULU हूँ, SPDP Company द्वारा निर्मित।"
-            elif active_lang == "Japanese":
-                fast_reply = "私はDELULUです。SPDP Companyによって開発されました。"
-            else:
-                fast_reply = "I am DELULU, made by SPDP company."
-
+        # Rhasspy Engine: Human Language Understanding (NLU) & Direct System Control Fast-Path
+        rhasspy_intent = rhasspy_nlu.recognize(user_text)
+        if rhasspy_intent:
+            spoken_reply, tools_run, new_lang_code = rhasspy_system_controller.handle_intent(
+                rhasspy_intent, skill_context, active_lang=active_lang
+            )
+            final_lang_code = new_lang_code or active_lang_code
             asst_msg = Message(
                 conversation_id=conversation_id,
                 user_id=user.id,
                 role="assistant",
-                content=fast_reply
+                content=spoken_reply,
+                tool_calls=json.dumps(tools_run) if tools_run else None
             )
             db.add(asst_msg)
             db.commit()
@@ -278,93 +259,11 @@ class Orchestrator:
                 "assistant_message": {
                     "id": asst_msg.id,
                     "role": "assistant",
-                    "content": fast_reply,
-                    "tool_calls": [],
+                    "content": spoken_reply,
+                    "tool_calls": tools_run,
                     "created_at": asst_msg.created_at.isoformat(),
-                    "brain": "SPDP_NEURAL_ENGINE",
-                    "language": active_lang_code
-                }
-            }
-
-        # Fast-Path 2: Instant Math Calculation (< 15ms response, spot-on, types into Calculator)
-        math_expr = self._extract_math_expression(user_text)
-        if math_expr:
-            exec_res = skill_registry.execute_skill("math.calculate", {"expression": math_expr}, skill_context)
-            res_str = exec_res.get("result", math_expr)
-            fast_math_reply = f"{res_str}."
-            asst_msg = Message(
-                conversation_id=conversation_id,
-                user_id=user.id,
-                role="assistant",
-                content=fast_math_reply,
-                tool_calls=json.dumps([{"tool": "math.calculate", "args": {"expression": math_expr}, "result": exec_res}])
-            )
-            db.add(asst_msg)
-            db.commit()
-            return {
-                "conversation_id": conversation_id,
-                "assistant_message": {
-                    "id": asst_msg.id,
-                    "role": "assistant",
-                    "content": fast_math_reply,
-                    "tool_calls": [{"tool": "math.calculate", "args": {"expression": math_expr}, "result": exec_res}],
-                    "created_at": asst_msg.created_at.isoformat(),
-                    "brain": "SPDP_NEURAL_ENGINE",
-                    "language": active_lang_code
-                }
-            }
-
-        # Fast-Path 3: Instant Time Query (< 10ms response, local precision)
-        if self._is_time_query(user_text):
-            exec_res = skill_registry.execute_skill("time.get", {}, skill_context)
-            time_val = exec_res.get("result", datetime.datetime.now().strftime("%I:%M:%S %p"))
-            fast_time_reply = f"The current time is {time_val}."
-            asst_msg = Message(
-                conversation_id=conversation_id,
-                user_id=user.id,
-                role="assistant",
-                content=fast_time_reply,
-                tool_calls=json.dumps([{"tool": "time.get", "args": {}, "result": exec_res}])
-            )
-            db.add(asst_msg)
-            db.commit()
-            return {
-                "conversation_id": conversation_id,
-                "assistant_message": {
-                    "id": asst_msg.id,
-                    "role": "assistant",
-                    "content": fast_time_reply,
-                    "tool_calls": [{"tool": "time.get", "args": {}, "result": exec_res}],
-                    "created_at": asst_msg.created_at.isoformat(),
-                    "brain": "SPDP_NEURAL_ENGINE",
-                    "language": active_lang_code
-                }
-            }
-
-        # Fast-Path 4: Instant Date Query (< 10ms response, local precision)
-        if self._is_date_query(user_text):
-            exec_res = skill_registry.execute_skill("date.get", {}, skill_context)
-            date_val = exec_res.get("result", datetime.datetime.now().strftime("%A, %B %d, %Y"))
-            fast_date_reply = f"Today is {date_val}."
-            asst_msg = Message(
-                conversation_id=conversation_id,
-                user_id=user.id,
-                role="assistant",
-                content=fast_date_reply,
-                tool_calls=json.dumps([{"tool": "date.get", "args": {}, "result": exec_res}])
-            )
-            db.add(asst_msg)
-            db.commit()
-            return {
-                "conversation_id": conversation_id,
-                "assistant_message": {
-                    "id": asst_msg.id,
-                    "role": "assistant",
-                    "content": fast_date_reply,
-                    "tool_calls": [{"tool": "date.get", "args": {}, "result": exec_res}],
-                    "created_at": asst_msg.created_at.isoformat(),
-                    "brain": "SPDP_NEURAL_ENGINE",
-                    "language": active_lang_code
+                    "brain": "RHASSPY_ENGINE",
+                    "language": final_lang_code
                 }
             }
 
