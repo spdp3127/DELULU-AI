@@ -283,6 +283,126 @@ class CentralSkillRegistry:
             handler=_app_open
         ))
 
+        # 6b. YOUTUBE DIRECT VIDEO PLAYER
+        def _youtube_play_video(ctx, query: str = ""):
+            import urllib.request, urllib.parse, webbrowser, re, time
+            clean_q = (query or "").strip()
+
+            # If query is relative or empty, try to resolve from recent DB context
+            if not clean_q or any(k == clean_q.lower() for k in [
+                "latest video", "first video", "the first video", "play video", "video",
+                "aadyathe video", "latest", "first", "first_video", "latest_video",
+                "ആദ്യത്തെ വീഡിയോ", "ഏറ്റവും പുതിയ വീഡിയോ"
+            ]):
+                db = ctx.get("db")
+                user_id = ctx.get("user_id")
+                if db and user_id:
+                    try:
+                        from delulu.database.models import Message
+                        recent_msgs = db.query(Message).filter(Message.user_id == user_id).order_by(Message.created_at.desc()).limit(12).all()
+                        for m in recent_msgs:
+                            c = (m.content or "").strip()
+                            if m.tool_calls:
+                                try:
+                                    t_data = json.loads(m.tool_calls) if isinstance(m.tool_calls, str) else m.tool_calls
+                                    if isinstance(t_data, list):
+                                        for t_item in t_data:
+                                            args = t_item.get("args", {})
+                                            if args.get("query") and args.get("query").lower() not in ["youtube", "video"]:
+                                                clean_q = args["query"]
+                                                break
+                                            if args.get("app_name") and any(ch in args.get("app_name").lower() for ch in ["mr", "beast", "song", "video"]):
+                                                clean_q = args["app_name"]
+                                                break
+                                except Exception:
+                                    pass
+                            if clean_q and clean_q.lower() not in ["latest video", "first video"]:
+                                break
+                            m_search = re.search(r'(?:search(?:ed)?\s+(?:for\s+)?[\'\"]?|search_query=)([^&\'\"\n]+)', c, re.I)
+                            if m_search:
+                                found = m_search.group(1).strip().strip("'\"")
+                                if found and found.lower() not in ["youtube", "video", "google"]:
+                                    clean_q = found
+                                    break
+                            m_topic = re.search(r'\b(?:open|play|search)\s+([a-zA-Z0-9\s]+?)(?:\s+latest\s+video|\s+video|\s+song)?$', c, re.I)
+                            if m_topic:
+                                found = m_topic.group(1).strip()
+                                if found and found.lower() not in ["youtube", "chrome", "video", "first", "latest"]:
+                                    clean_q = found
+                                    break
+                    except Exception:
+                        pass
+
+            if not clean_q or clean_q.lower() in ["latest video", "first video", "video", "latest", "first"]:
+                clean_q = "mrbeast latest video"
+
+            # Clean punctuation or typos like "mr beast ;atest video" -> "mr beast latest video"
+            clean_q = re.sub(r'[;:,]', ' ', clean_q)
+            clean_q = re.sub(r';atest', 'latest', clean_q, flags=re.I)
+            clean_q = re.sub(r'\s+', ' ', clean_q).strip()
+
+            search_term = clean_q
+            if "video" not in clean_q.lower() and "song" not in clean_q.lower():
+                search_term = f"{clean_q} latest video"
+
+            vid_id = None
+            title = None
+            try:
+                search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(search_term)}"
+                req = urllib.request.Request(search_url, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                })
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    html = resp.read().decode("utf-8", errors="ignore")
+
+                matches = re.findall(r'\"videoId\":\"([a-zA-Z0-9_-]{11})\".*?\"title\":\{\"runs\":\[\{\"text\":\"(.*?)\"\}\]', html)
+                if matches:
+                    vid_id, title = matches[0]
+                else:
+                    vids = re.findall(r'"videoId":"([a-zA-Z0-9_-]{11})"', html)
+                    if not vids:
+                        vids = re.findall(r'/watch\?v=([a-zA-Z0-9_-]{11})', html)
+                    if vids:
+                        vid_id = vids[0]
+                        title = clean_q
+            except Exception:
+                pass
+
+            if vid_id:
+                watch_url = f"https://www.youtube.com/watch?v={vid_id}"
+                webbrowser.open(watch_url)
+                return {
+                    "status": "success",
+                    "action": "play_video",
+                    "video_id": vid_id,
+                    "title": title or clean_q,
+                    "url": watch_url,
+                    "message": f"Playing '{title or clean_q}' on YouTube: {watch_url}"
+                }
+            else:
+                fallback_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(search_term)}"
+                webbrowser.open(fallback_url)
+                return {
+                    "status": "success",
+                    "action": "search_and_open",
+                    "query": search_term,
+                    "url": fallback_url,
+                    "message": f"Opened YouTube search for '{search_term}'."
+                }
+
+        self.register(Skill(
+            name="youtube.play_video",
+            description="Directly play a YouTube video in browser by search topic or latest video query (e.g. 'mrbeast latest video', 'first video').",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Channel name, topic, or video title to play"}
+                }
+            },
+            category="MEDIA",
+            handler=_youtube_play_video
+        ))
+
         def _system_lock(ctx):
             gateway = ctx.get("desktop_gateway")
             user_id = ctx.get("user_id")

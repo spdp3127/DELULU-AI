@@ -192,19 +192,84 @@ class RhasspyNLUEngine:
                 text=clean_text
             )
 
+        # 1c. Direct YouTube Video Player (Plays specific, latest, or first video)
+        # Handles: "open mrbeast latest video", "play mrbeast latest video", "play the first video", "play latest video",
+        # "mrbeast latest video play cheyyu", "aadyathe video play cheyyu", "oru paatu play cheyyu", "play mrbeast"
+        is_video_feedback = any(k in q_cmd for k in [
+            "akkunnilla", "aakunnilla", "cheyyunnilla", "cheyyilla", "not playing", "work aavunnilla", "not working",
+            "parannu akkunnilla", "parayumbol", "പറ്റുന്നില്ല", "ചെയ്യുന്നില്ല", "ആകുന്നില്ല"
+        ])
+
+        # 1. Check explicit channel/topic video requests FIRST (e.g. "open mrbeast latest video", "mrbeast latest video play cheyyu")
+        m_topic_vid = None
+        if not is_video_feedback:
+            m_topic_vid = (
+                re.search(r'\b(?:open|play|launch|start)\s+(?:youtube\s+(?:and|to)\s+play\s+)?(.*?)\s+(?:latest\s+video|;atest\s+video|new\s+video|video)\b', q_cmd, re.I) or
+                re.search(r'\b(?:play|open)\s+(?:the\s+)?(?:video\s+(?:of|for)\s+)?(.*?)\s+(?:on|in)\s+youtube\b', q_cmd, re.I) or
+                re.search(r'\b(?:open\s+youtube\s+and\s+play)\s+(.*)', q_cmd, re.I) or
+                re.search(r'^(.*?)\s+(?:latest\s+video|video)\s+(?:onnu\s+)?(?:play\s+cheyyu|play\s+aakku|idu|vekk|kaanikku|kaananam|കാണിക്കൂ|പ്ലേ\s+ചെയ്യൂ)', q_cmd, re.I)
+            )
+        if m_topic_vid:
+            raw_target = m_topic_vid.group(1).strip()
+            raw_target = re.sub(r'^(?:the|a|for|about|of|open|play)\s+', '', raw_target, flags=re.I).strip()
+            raw_target = re.sub(r'\s+(?:on|in)\s+youtube$', '', raw_target, flags=re.I).strip()
+            raw_target = re.sub(r'[;:,]', ' ', raw_target).strip()
+            raw_target = re.sub(r'\s+', ' ', raw_target)
+            if raw_target and raw_target.lower() not in ["first", "the first", "latest", "the latest", "puthiya", "aadyathe", "adhyathe", "this", "it"]:
+                return RhasspyIntent(
+                    name="PlayYouTubeVideo",
+                    confidence=0.99,
+                    slots={"query": f"{raw_target} latest video"},
+                    text=clean_text
+                )
+
+        # 2. Check relative / contextual video play: "play the first video", "play latest video", "aadyathe video play cheyyu"
+        m_rel_video = None
+        if not is_video_feedback:
+            m_rel_video = (
+                re.search(r'\b(?:play|open|start|കാണിക്കൂ|പ്ലേ\s+ചെയ്യൂ|തുറക്കൂ)\s+(?:the\s+)?(first|latest|aadyathe|adhyathe|puthiya|ഏറ്റവും\s+പുതിയ|ആദ്യത്തെ)\s+video\b', q_cmd, re.I) or
+                re.search(r'\b(first|latest|aadyathe|adhyathe|puthiya|ഏറ്റവും\s+പുതിയ|ആദ്യത്തെ)\s+video\s+(?:onnu\s+)?(?:play|play\s+cheyyu|play\s+aakku|idu|vekk|kaanikku|thura|പ്ലേ\s+ചെയ്യൂ|കാണിക്കൂ)\b', q_cmd, re.I) or
+                (q_cmd.strip(' .!').lower() in [
+                    "play the first video", "play first video", "play latest video", "please play latest video",
+                    "play the latest video", "play video", "first video", "latest video", "play this video",
+                    "aadyathe video play cheyyu", "aadyathe video idu", "aadyathe video", "latest video play cheyyu",
+                    "ആദ്യത്തെ വീഡിയോ പ്ലേ ചെയ്യൂ", "ഏറ്റവും പുതിയ വീഡിയോ പ്ലേ ചെയ്യൂ"
+                ])
+            )
+        if m_rel_video:
+            rel_type = "latest" if any(w in q_cmd.lower() for w in ["latest", "പുതിയ", "puthiya"]) else "first"
+            return RhasspyIntent(
+                name="PlayYouTubeVideo",
+                confidence=0.99,
+                slots={"query": f"{rel_type}_video", "relative": rel_type},
+                text=clean_text
+            )
+
+        # 3. Direct simple "play <topic>" (e.g. "play mrbeast", "play taylor swift")
+        m_play_simple = re.search(r'^\s*(?:play)\s+(?:the\s+)?([a-zA-Z0-9\s]+?)(?:\s+song|\s+video)?$', q_cmd, re.I) if not is_video_feedback else None
+        if m_play_simple:
+            target = m_play_simple.group(1).strip()
+            if target.lower() not in ["music", "song", "video", "first", "latest", "it", "this"]:
+                return RhasspyIntent(
+                    name="PlayYouTubeVideo",
+                    confidence=0.99,
+                    slots={"query": f"{target} latest video"},
+                    text=clean_text
+                )
+
         # 2. Compound Open Platform and Search Query / Music Listening:
         # e.g. "open youtube and search mr beast", "search mr beast on youtube", "oru paatu kelkanam", "mohanlal mass scenes youtubeil kanikku"
         # Malayalam: "യൂട്യൂബ് തുറന്ന് mr beast തിരയൂ", "യൂട്യൂബിൽ mr beast സെർച്ച് ചെയ്യൂ", "ഒരു പാട്ട് കേൾക്കണം"
         
         # Human music intent: "oru paatu kelkanam", "paatu idu", "song vekku", "play music", "ഒരു പാട്ട് വെയ്ക്കൂ"
-        m_music_generic = re.search(r'\b(?:oru\s+)?(?:paatu|paattu|song|music|gana)\s+(?:kelkanam|kelkkanam|kelkkan|idu|vekku|vekk|play|കേൾക്കണം|വെയ്ക്കൂ|പാടൂ)\b', q_cmd)
+        m_music_generic = re.search(r'\b(?:oru\s+)?(?:paatu|paattu|song|music|gana)\s+(?:kelkanam|kelkkanam|kelkkan|idu|vekku|vekk|play|കേൾക്കണം|വെയ്ക്കൂ|പാടൂ)\b', q_cmd) if not is_video_feedback else None
         if m_music_generic:
             prefix = re.sub(r'\b(?:oru\s+)?(?:paatu|paattu|song|music|gana)\s+.*', '', q_cmd).strip()
             search_q = f"{prefix} song" if prefix and len(prefix) > 2 else "trending Malayalam and English songs"
             return RhasspyIntent(
-                name="CompoundOpenAndSearch",
+                name="PlayYouTubeVideo",
                 confidence=0.99,
-                slots={"platform": "youtube", "query": search_q},
+                slots={"query": search_q},
                 text=clean_text
             )
 
@@ -354,6 +419,7 @@ class RhasspyNLUEngine:
 
         if (app_match or app_mal_match or app_hi_match) and not any(k in q_cmd for k in [
             "python", "script", "project", "website", "calculate", "claculate", "compute", "math", "tab", "file",
+            "video", "latest", ";atest", "first", "song", "paatu", "gana", "പാട്ട്", "വീഡിയോ", "ഗാനം",
             "+", "-", "*", "/", "കണക്കു", "kanakku", "kanakk", "kootu", "kootanam", "gunikku", "harikku", "ethra",
             "cheyyunnilla", "cheyyilla", "aakunnilla", "work aavunnilla", "not working", "working alla", "parayumbol",
             "പറ്റുന്നില്ല", "ചെയ്യുന്നില്ല", "ആകുന്നില്ല"

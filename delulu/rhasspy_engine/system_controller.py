@@ -120,6 +120,20 @@ class RhasspySystemController:
                 return f"मैंने कैलकुलेटर खोल दिया है और {res_str} हल कर दिया है।", tools_run, None
             return f"I have opened Calculator and calculated {res_str}.", tools_run, None
 
+        # 0b1. Play YouTube Video directly
+        if name == "PlayYouTubeVideo":
+            q_slot = slots.get("query", "").strip()
+            res = skill_registry.execute_skill("youtube.play_video", {"query": q_slot}, context)
+            tools_run.append({"tool": "youtube.play_video", "args": {"query": q_slot}, "result": res})
+            res_val = res.get("result", {}) if isinstance(res, dict) else {}
+            title = res_val.get("title", q_slot) if isinstance(res_val, dict) else q_slot
+            url = res_val.get("url", "") if isinstance(res_val, dict) else ""
+            if active_lang == "Malayalam":
+                return f"യൂട്യൂബിൽ '{title}' എന്ന വീഡിയോ ഇപ്പോൾ നേരിട്ട് പ്ലേ ചെയ്യുന്നുണ്ട്! 🎬", tools_run, None
+            elif active_lang == "Hindi":
+                return f"यूट्यूब पर '{title}' अब चल रहा है! 🎬", tools_run, None
+            return f"Now playing '{title}' on YouTube! 🎬", tools_run, None
+
         # 0b. Compound Open Platform and Search
         # e.g. "open youtube and search mr beast", "search mr beast on youtube"
         if name == "CompoundOpenAndSearch":

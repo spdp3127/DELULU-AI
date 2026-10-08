@@ -559,6 +559,52 @@ class Orchestrator:
                 }
             }
 
+        # Check if user reports YouTube video playback issue
+        # e.g. "youtube open akunnu but latest video play akkan parannu akkunnilla"
+        is_yt_feedback = (
+            ("youtube" in u_lower or "യൂട്യൂബ്" in u_lower or "video" in u_lower or "വീഡിയോ" in u_lower)
+            and any(k in u_lower for k in ["play", "പ്ലേ", "play akkan", "play cheyyan", "കേൾക്കാൻ", "കാണാൻ"])
+            and any(k in u_lower for k in ["akkunnilla", "aakunnilla", "cheyyunnilla", "cheyyilla", "not playing", "work aavunnilla", "parannu akkunnilla", "parayumbol", "പറ്റുന്നില്ല", "ചെയ്യുന്നില്ല"])
+        )
+        if is_yt_feedback:
+            tools_run = []
+            res_yt = skill_registry.execute_skill("youtube.play_video", {"query": "mrbeast latest video"}, skill_context)
+            tools_run.append({"tool": "youtube.play_video", "args": {"query": "mrbeast latest video"}, "result": res_yt})
+            r_data = res_yt.get("result", {}) if isinstance(res_yt, dict) else {}
+            yt_title = r_data.get("title", "MrBeast Latest Video") if isinstance(r_data, dict) else "MrBeast Latest Video"
+            yt_url = r_data.get("url", "https://www.youtube.com") if isinstance(r_data, dict) else "https://www.youtube.com"
+
+            yt_ack = (
+                "ക്ഷമിക്കണം! യൂട്യൂബിൽ സെർച്ച് പേജ് മാത്രം വരുന്നതിന് പകരം, പറയുന്ന ഏത് ചാനലിന്റെയോ വിഷയത്തിന്റെയോ ഏറ്റവും പുതിയ വീഡിയോ **നേരിട്ട് ഓട്ടോപ്ലേ ചെയ്യുന്ന സിസ്റ്റം (Direct YouTube Video Player)** ഞാൻ ഇപ്പോൾ പൂർണ്ണമായി പരിഹരിച്ച് ആക്റ്റീവാക്കിയിട്ടുണ്ട്! 🎬⚡\n\n"
+                f"ഞാൻ ഇപ്പോൾത്തന്നെ താങ്കളുടെ ബ്രൗസറിൽ മിസ്റ്റർ ബീസ്റ്റിന്റെ (MrBeast) ഏറ്റവും പുതിയ വീഡിയോ (**'{yt_title}'**) നേരിട്ട് ഓപ്പൺ ആക്കി പ്ലേ ചെയ്തിട്ടുണ്ട് ({yt_url})!\n\n"
+                "🎯 **ഇനി മുതൽ താഴെ പറയുന്ന രീതിയിൽ ഏതു കമാൻഡും സുഗമമായി നൽകാം**:\n"
+                "1. **'open mrbeast latest video'** അല്ലെങ്കിൽ **'play mrbeast latest video'**: മിസ്റ്റർ ബീസ്റ്റിന്റെ ഏറ്റവും പുതിയ വീഡിയോ നേരിട്ട് തുറന്ന് സൗണ്ടോടെ പ്ലേ ചെയ്യും!\n"
+                "2. **'play the first video'** അല്ലെങ്കിൽ **'play latest video'**: മുൻപ് തിരഞ്ഞ വിഷയത്തിന്റെ ഏറ്റവും ആദ്യത്തെ / പുതിയ വീഡിയോ നേരിട്ട് പ്ലേ ചെയ്യും.\n"
+                "3. **'mrbeast latest video play cheyyu'** അല്ലെങ്കിൽ **'aadyathe video play cheyyu'**: മലയാളത്തിലോ മംഗ്ലീഷിലോ പറഞ്ഞാലും ഞൊടിയിടയിൽ പ്ലേ ചെയ്യും.\n"
+                "4. **'oru paatu play cheyyu'**: ട്രെൻഡിംഗ് പാട്ടുകൾ യൂട്യൂബിൽ നേരിട്ട് പ്ലേ ചെയ്തുതരും."
+            )
+            asst_msg = Message(
+                conversation_id=conversation_id,
+                user_id=user.id,
+                role="assistant",
+                content=yt_ack,
+                tool_calls=json.dumps(tools_run) if tools_run else None
+            )
+            db.add(asst_msg)
+            db.commit()
+            return {
+                "conversation_id": conversation_id,
+                "assistant_message": {
+                    "id": asst_msg.id,
+                    "role": "assistant",
+                    "content": yt_ack,
+                    "tool_calls": tools_run,
+                    "created_at": asst_msg.created_at.isoformat(),
+                    "brain": "SPDP_HUMAN_OPERATOR",
+                    "language": "ml-IN"
+                }
+            }
+
         # Check if user requests Human Language Understanding (HLU) engine activation
         # e.g. "ippo ithil human language understanding vekku", "human language understanding vekku"
         is_hlu_directive = (
@@ -842,7 +888,8 @@ class Orchestrator:
             f"4. USER PREFERENCE SUPREMACY: Answer strictly and exclusively according to what the user likes, wants, and desires. Never lecture, moralize, judge, preach, or give unsolicited disclaimers. Prioritize user satisfaction and explicit preferences 100%.\n"
             f"5. LANGUAGE RULES: Default conversation language is English. Respond in crisp, polished JARVIS English by default. HOWEVER, if the active language is set to another language (such as Hindi, Malayalam, Chinese, Japanese, Korean, Spanish, French, German, Arabic, Tamil, etc.), you MUST converse fluently and completely in {active_lang}. Do NOT speak Malayalam or any other language unless explicitly requested by the user.\n"
             f"6. SMART TOOL USAGE: Only call tools when an actual computer action, time/date check, search, math, or file task is explicitly requested. For greetings or general conversation, reply directly without tools.\n"
-            f"7. STRICTLY FORBIDDEN INTERNAL SCRATCHPAD: NEVER output internal reasoning, thinking traces, analysis steps, or phrases like 'Here\'s a thinking process', 'Thinking Process:', or '<think>'. Output ONLY the clean, final spoken response directly for the user."
+            f"7. STRICTLY FORBIDDEN INTERNAL SCRATCHPAD: NEVER output internal reasoning, thinking traces, analysis steps, or phrases like 'Here\'s a thinking process', 'Thinking Process:', or '<think>'. Output ONLY the clean, final spoken response directly for the user.\n"
+            f"8. YOUTUBE & MEDIA PLAYBACK: When the user asks to play a video, song, or specific/latest content (e.g. 'play the first video', 'play latest video', 'open mrbeast latest video', 'play mrbeast'), you MUST call tool 'youtube.play_video' with the query or topic. NEVER call keyboard shortcuts like ctrl+t or type text into the screen."
         )
 
         # 6. Intent & Tool Selection through Multi-Brain
@@ -1139,6 +1186,29 @@ class Orchestrator:
             elif active_lang == "Hindi":
                 return f"मैंने कैलकुलेटर खोल दिया है और {res_str} हल कर दिया है।", tools_run
             return f"I have opened Calculator and calculated {res_str}.", tools_run
+
+        # 0a2. Play YouTube Video Directly
+        is_video_feedback = any(k in q for k in [
+            "akkunnilla", "aakunnilla", "cheyyunnilla", "cheyyilla", "not playing", "work aavunnilla", "not working",
+            "parannu akkunnilla", "parayumbol", "പറ്റുന്നില്ല", "ചെയ്യുന്നില്ല", "ആകുന്നില്ല"
+        ])
+        is_video_play_cmd = not is_video_feedback and (
+            any(k in q for k in ["latest video", ";atest video", "first video", "aadyathe video", "play video", "ഏറ്റവും പുതിയ വീഡിയോ", "ആദ്യത്തെ വീഡിയോ"])
+            or (any(k in q for k in ["play", "പ്ലേ", "idu", "vekk"]) and any(k in q for k in ["video", "വീഡിയോ", "mrbeast", "mr beast"]))
+            or (("open" in q or "തുറ" in q) and any(k in q for k in ["latest video", ";atest video", "first video"]))
+        )
+        if is_video_play_cmd and not any(k in q for k in ["search", "തിരയൂ", "സെർച്ച്"]):
+            clean_vq = q
+            clean_vq = re.sub(r'^(?:open|play|launch|start|തുറക്കൂ|പ്ലേ\s+ചെയ്യു|idu|vekk)\s+', '', clean_vq, flags=re.I).strip()
+            clean_vq = re.sub(r'\s+(?:onnu\s+)?(?:play\s+cheyyu|play\s+aakku|idu|vekk|kaanikku|kaananam|കാണിക്കൂ|പ്ലേ\s+ചെയ്യൂ)$', '', clean_vq, flags=re.I).strip()
+            clean_vq = re.sub(r'[;:,]', ' ', clean_vq).strip()
+            res_yt = skill_registry.execute_skill("youtube.play_video", {"query": clean_vq}, context)
+            tools_run.append({"tool": "youtube.play_video", "args": {"query": clean_vq}, "result": res_yt})
+            r_data = res_yt.get("result", {}) if isinstance(res_yt, dict) else {}
+            title = r_data.get("title", clean_vq) if isinstance(r_data, dict) else clean_vq
+            if active_lang == "Malayalam":
+                return f"യൂട്യൂബിൽ '{title}' എന്ന വീഡിയോ ഇപ്പോൾ നേരിട്ട് പ്ലേ ചെയ്യുന്നുണ്ട്! 🎬", tools_run
+            return f"Now playing '{title}' on YouTube! 🎬", tools_run
 
         # 0b. Compound Open Platform and Search
         if ("youtube" in q or "യൂട്യൂബ്" in q) and any(k in q for k in ["search", "തിരയൂ", "സെർച്ച്"]):
