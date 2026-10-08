@@ -5,7 +5,7 @@ import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import requests
 from sqlalchemy.orm import Session
-from delulu.database.models import User, Conversation, Message, Profile
+from delulu.database.models import User, Conversation, Message, Profile, MemoryItem
 from delulu.memory.memory_service import memory_service
 from delulu.skills.registry import skill_registry
 from delulu.permissions.guard import permission_guard
@@ -164,7 +164,42 @@ class Orchestrator:
 
         # Strip markdown prefixes like **Final Answer:**
         t = re.sub(r'^(?:\*\*)?(?:Final Answer|Answer|Result):(?:\*\*)?\s*', '', t, flags=re.IGNORECASE).strip()
+        # Strip any raw tool_call tags from final output
+        t = re.sub(r'<tool_call>.*?</tool_call>', '', t, flags=re.DOTALL).strip()
+        t = re.sub(r'<function=.*?</function>', '', t, flags=re.DOTALL).strip()
         return t
+
+    def _resolve_raw_tool_calls(self, text: str, skill_context: Dict[str, Any]) -> Tuple[str, List[Dict[str, Any]]]:
+        """Detect and execute raw XML tool_call blocks emitted by models (e.g. Nemotron/Llama)."""
+        if not text or ("<tool_call>" not in text and "<function=" not in text):
+            return text, []
+
+        tool_results = []
+        fn_match = re.search(r'<function=([a-zA-Z0-9_\.]+)>', text)
+        if fn_match:
+            raw_fn = fn_match.group(1).replace("_", ".")
+            param_match = re.search(r'<parameter=([a-zA-Z0-9_]+)>([^<]+)</parameter>', text)
+            args = {}
+            if param_match:
+                p_name = param_match.group(1)
+                p_val = param_match.group(2).strip()
+                args[p_name] = p_val
+                if "weather" in raw_fn or "weather" in p_val.lower():
+                    raw_fn = "weather.get"
+                    clean_loc = p_val.replace("weather", "").replace("today", "").replace("temperature", "").replace("current", "").strip() or "Kochi"
+                    args = {"location": clean_loc}
+
+            if ("search" in raw_fn or "weather" in raw_fn) and any(w in str(args).lower() for w in ["weather", "temperature", "climate"]):
+                raw_fn = "weather.get"
+                args = {"location": "Kochi"}
+
+            exec_res = skill_registry.execute_skill(raw_fn, args, skill_context)
+            tool_results.append({"tool": raw_fn, "args": args, "result": exec_res})
+            res_val = exec_res.get("result", "")
+            return str(res_val), tool_results
+
+        clean = re.sub(r'<[^>]+>', '', text).strip()
+        return clean, []
 
     def process_chat(self, db: Session, user: User, conversation_id: str, user_text: str) -> Dict[str, Any]:
         """
@@ -230,13 +265,26 @@ class Orchestrator:
         # Determine Active Preferred Language (Default is English)
         active_lang = "English"
         active_lang_code = "en-US"
-        for m in memories:
-            if "Preferred conversation language:" in m.content:
-                pref_name = m.content.split("Preferred conversation language:")[-1].strip().lower()
-                if pref_name in LANG_MAP:
-                    active_lang = LANG_MAP[pref_name][0]
-                    active_lang_code = LANG_MAP[pref_name][1]
-                    break
+
+        # Check explicit persistent language memory
+        lang_mem = db.query(MemoryItem).filter(
+            MemoryItem.user_id == user.id,
+            MemoryItem.category == "language"
+        ).order_by(MemoryItem.created_at.desc()).first()
+
+        if lang_mem and "Preferred conversation language:" in lang_mem.content:
+            pref_name = lang_mem.content.split("Preferred conversation language:")[-1].strip().lower()
+            if pref_name in LANG_MAP:
+                active_lang = LANG_MAP[pref_name][0]
+                active_lang_code = LANG_MAP[pref_name][1]
+
+        # Auto-detect if current query is in Malayalam or Hindi
+        if re.search(r'[\u0D00-\u0D7F]', user_text) or any(w in user_text.lower() for w in ["samayam", "theeyathi", "enthokkeyundu", "sugamano", "ethrayayi"]):
+            active_lang = "Malayalam"
+            active_lang_code = "ml-IN"
+        elif re.search(r'[\u0900-\u097F]', user_text) or any(w in user_text.lower() for w in ["samay", "kya hai", "kaise ho"]):
+            active_lang = "Hindi"
+            active_lang_code = "hi-IN"
 
         # Rhasspy Engine: Human Language Understanding (NLU) & Direct System Control Fast-Path
         rhasspy_intent = rhasspy_nlu.recognize(user_text)
@@ -321,7 +369,7 @@ class Orchestrator:
                     "max_tokens": 350,
                     "temperature": 0.7
                 }
-                r = self.http.post(url, json=req_body, headers=headers, timeout=6)
+                r = requests.post(url, json=req_body, headers=headers, timeout=5)
                 if r.status_code == 200:
                     choice = r.json()["choices"][0]["message"]
                     if choice.get("tool_calls"):
@@ -346,11 +394,17 @@ class Orchestrator:
                             })
 
                         # Synthesize final response
-                        r2 = self.http.post(url, json={"model": self.default_nvidia_model, "messages": messages_payload, "max_tokens": 350, "temperature": 0.7}, headers=headers, timeout=6)
+                        r2 = requests.post(url, json={"model": self.default_nvidia_model, "messages": messages_payload, "max_tokens": 350, "temperature": 0.7}, headers=headers, timeout=5)
                         if r2.status_code == 200:
                             response_text = self._sanitize_assistant_speech(r2.json()["choices"][0]["message"]["content"])
                     else:
-                        response_text = self._sanitize_assistant_speech(choice.get("content"))
+                        raw_c = choice.get("content") or ""
+                        resolved_c, raw_tools = self._resolve_raw_tool_calls(raw_c, skill_context)
+                        if raw_tools:
+                            tool_results_list.extend(raw_tools)
+                            response_text = resolved_c
+                        else:
+                            response_text = self._sanitize_assistant_speech(raw_c)
 
                     if response_text:
                         used_brain = "SPDP_NEURAL_ENGINE"
@@ -382,7 +436,7 @@ class Orchestrator:
                             "tool_choice": "auto",
                             "max_tokens": 350
                         }
-                        or_resp = self.http.post(or_url, json=req_payload, headers=or_headers, timeout=8)
+                        or_resp = requests.post(or_url, json=req_payload, headers=or_headers, timeout=3.5)
                         if or_resp.status_code == 200:
                             or_json = or_resp.json()
                             if "choices" in or_json and or_json["choices"]:
@@ -409,11 +463,17 @@ class Orchestrator:
                                         })
 
                                     # Synthesize final speech
-                                    r_synth = self.http.post(or_url, json={"model": candidate_model, "messages": or_messages, "max_tokens": 350}, headers=or_headers, timeout=8)
+                                    r_synth = requests.post(or_url, json={"model": candidate_model, "messages": or_messages, "max_tokens": 350}, headers=or_headers, timeout=3.5)
                                     if r_synth.status_code == 200:
                                         response_text = self._sanitize_assistant_speech(r_synth.json()["choices"][0]["message"]["content"])
                                 else:
-                                    response_text = self._sanitize_assistant_speech(or_choice.get("content"))
+                                    raw_c = or_choice.get("content") or ""
+                                    resolved_c, raw_tools = self._resolve_raw_tool_calls(raw_c, skill_context)
+                                    if raw_tools:
+                                        tool_results_list.extend(raw_tools)
+                                        response_text = resolved_c
+                                    else:
+                                        response_text = self._sanitize_assistant_speech(raw_c)
 
                                 if response_text:
                                     used_brain = "SPDP_NEURAL_ENGINE"
@@ -503,7 +563,7 @@ class Orchestrator:
 
         # 5. Fallback to Local Offline Brain if no API response
         if not response_text:
-            response_text, tool_results_list = self._run_local_brain(user_text, skill_context, asst_name)
+            response_text, tool_results_list = self._run_local_brain(user_text, skill_context, asst_name, active_lang=active_lang)
             used_brain = "SPDP_NEURAL_ENGINE"
 
         # Final sanitization pass
@@ -535,31 +595,56 @@ class Orchestrator:
             }
         }
 
-    def _run_local_brain(self, query: str, context: Dict[str, Any], asst_name: str) -> Tuple[str, List[Dict[str, Any]]]:
-        """Local offline reasoning for basic tasks, hardware control, calculations, and memory."""
+    def _run_local_brain(self, query: str, context: Dict[str, Any], asst_name: str, active_lang: str = "English") -> Tuple[str, List[Dict[str, Any]]]:
+        """Local offline reasoning for basic tasks, hardware control, calculations, weather, and memory."""
         q = query.lower().strip()
         tools_run = []
 
-        # 1. Math & Calculation (Instant offline evaluation)
+        # 1. Weather
+        if any(w in q for w in ["weather", "climate", "temperature", "mazha", "kalavastha"]):
+            loc = "Kochi"
+            m = re.search(r'\b(?:in|at|for|of)\s+([a-zA-Z\s]+)', q)
+            if m:
+                cand = m.group(1).replace("today", "").replace("now", "").strip()
+                if cand and cand not in ["today", "now", "here"]:
+                    loc = cand
+            res = skill_registry.execute_skill("weather.get", {"location": loc}, context)
+            tools_run.append({"tool": "weather.get", "args": {"location": loc}, "result": res})
+            w_res = res.get("result", f"Weather in {loc} retrieved.")
+            if active_lang == "Malayalam":
+                return f"ഇന്നത്തെ കാലാവസ്ഥ: {w_res}", tools_run
+            return f"{w_res}", tools_run
+
+        # 2. Math & Calculation (Instant offline evaluation)
         math_expr = self._extract_math_expression(query)
         if math_expr:
             res = skill_registry.execute_skill("math.calculate", {"expression": math_expr}, context)
             tools_run.append({"tool": "math.calculate", "args": {"expression": math_expr}, "result": res})
             return f"{res.get('result', math_expr)}.", tools_run
 
-        # 2. Time
+        # 3. Time
         if any(w in q for w in ["time", "clock", "samayam"]):
             res = skill_registry.execute_skill("time.get", {}, context)
+            t_val = res.get("result", datetime.datetime.now().strftime("%I:%M:%S %p"))
             tools_run.append({"tool": "time.get", "result": res})
-            return f"The current time is {res.get('result')}.", tools_run
+            if active_lang == "Malayalam":
+                return f"ഇപ്പോൾ സമയം {t_val} ആണ്.", tools_run
+            elif active_lang == "Hindi":
+                return f"अभी समय {t_val} है।", tools_run
+            return f"The current time is {t_val}.", tools_run
 
-        # 3. Date
+        # 4. Date
         if any(w in q for w in ["date", "today", "theeyathi"]):
             res = skill_registry.execute_skill("date.get", {}, context)
+            d_val = res.get("result", datetime.datetime.now().strftime("%A, %B %d, %Y"))
             tools_run.append({"tool": "date.get", "result": res})
-            return f"Today is {res.get('result')}.", tools_run
+            if active_lang == "Malayalam":
+                return f"ഇന്ന് {d_val} ആണ്.", tools_run
+            elif active_lang == "Hindi":
+                return f"आज {d_val} है।", tools_run
+            return f"Today is {d_val}.", tools_run
 
-        # 4. Volume
+        # 5. Volume
         vol_match = re.search(r"(?:volume|sound).*?(\d+)", q)
         if vol_match:
             level = int(vol_match.group(1))
@@ -567,27 +652,27 @@ class Orchestrator:
             tools_run.append({"tool": "system.volume", "args": {"level": level}, "result": res})
             return f"System volume adjustment request dispatched ({level}%).", tools_run
 
-        # 5. Launch App
+        # 6. Launch App
         app_match = re.search(r"open\s+([a-zA-Z0-9\s]+)", q)
-        if app_match and not any(k in q for k in ["project", "file", "tab", "calculate"]):
+        if app_match and not any(k in q for k in ["project", "file", "tab", "calculate", "math"]):
             app_name = app_match.group(1).strip()
             res = skill_registry.execute_skill("app.open", {"app_name": app_name}, context)
             tools_run.append({"tool": "app.open", "args": {"app_name": app_name}, "result": res})
             return f"A {app_name} window is now open.", tools_run
 
-        # 6. Screenshot
+        # 7. Screenshot
         if any(w in q for w in ["screenshot", "screen shot", "capture screen"]):
             res = skill_registry.execute_skill("system.screenshot", {}, context)
             tools_run.append({"tool": "system.screenshot", "result": res})
             return f"{res.get('result', 'Screenshot taken.')}.", tools_run
 
-        # 7. Hardware Telemetry
+        # 8. Hardware Telemetry
         if any(w in q for w in ["telemetry", "hardware", "cpu", "ram", "battery"]):
             res = skill_registry.execute_skill("system.telemetry", {}, context)
             tools_run.append({"tool": "system.telemetry", "result": res})
             return f"{res.get('result', 'Hardware status collected.')}", tools_run
 
-        # 8. Remember / Memory
+        # 9. Remember / Memory
         rem_match = re.search(r"(?:remember|save to memory|my preference is)\s+(.*)", q)
         if rem_match:
             mem_text = rem_match.group(1).strip()
@@ -595,26 +680,36 @@ class Orchestrator:
             tools_run.append({"tool": "memory.write", "args": {"content": mem_text}, "result": res})
             return f"I have saved that to your private memory: '{mem_text}'.", tools_run
 
-        # 9. List files
+        # 10. List files
         if "files" in q or "my files" in q:
             res = skill_registry.execute_skill("files.list", {}, context)
             tools_run.append({"tool": "files.list", "result": res})
             return f"Your private files:\n{res.get('result')}", tools_run
 
-        # 10. List tasks
+        # 11. List tasks
         if "tasks" in q or "my tasks" in q:
             res = skill_registry.execute_skill("tasks.list", {}, context)
             tools_run.append({"tool": "tasks.list", "result": res})
             return f"Your tasks:\n{res.get('result')}", tools_run
 
-        # 11. Identity
+        # 12. Identity
         if any(w in q for w in ["who are you", "who made you", "aaranu nee", "who is delulu", "who created you"]):
+            if active_lang == "Malayalam":
+                return "ഞാൻ DELULU ആണ്, SPDP Company നിർമ്മിച്ചതാണ്.", tools_run
+            elif active_lang == "Hindi":
+                return "मैं DELULU हूँ, SPDP Company द्वारा निर्मित।", tools_run
             return "I am DELULU, made by SPDP company.", tools_run
 
-        # 12. Greeting & generic
-        if any(w in q for w in ["hello", "hi", "hey"]):
-            return f"Hello! I am DELULU, your personal AI assistant made by SPDP company. How can I assist you today?", tools_run
+        # 13. Greeting & generic
+        if any(w in q for w in ["hello", "hi", "hai", "hey", "namaskaram", "namaste", "sugamano", "enthokkeyundu"]):
+            if active_lang == "Malayalam":
+                return "ഹലോ! ഞാൻ DELULU ആണ്. ഞാൻ സജ്ജമാണ്, എന്താണ് ചെയ്യേണ്ടത്?", tools_run
+            elif active_lang == "Hindi":
+                return "नमस्ते! मैं DELULU हूँ। मैं आपकी क्या मदद कर सकता हूँ?", tools_run
+            return f"Hello! I am DELULU, online and ready to assist you. How can I help you today?", tools_run
 
+        if active_lang == "Malayalam":
+            return "നിങ്ങളുടെ അഭ്യർത്ഥന ലഭിച്ചു. എന്താണ് ഞാൻ ചെയ്യേണ്ടത്?", tools_run
         return (
             f"I have received your request. All local tools and your private workspace are active. "
             f"You can ask me to perform tasks, calculate equations, save memories, manage files, or control your PC."

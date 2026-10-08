@@ -200,6 +200,35 @@ class RhasspyNLUEngine:
                 text=clean_text
             )
 
+        # K. Greeting
+        greeting_words = [
+            "hai", "hi", "hello", "hey", "hey delulu", "delulu", "jarvis",
+            "good morning", "good afternoon", "good evening", "good day",
+            "namaskaram", "namaste", "enthokkeyundu", "sugamano", "sughamano"
+        ]
+        if q_lower in greeting_words or any(q_lower.startswith(g + " ") for g in ["hai", "hi", "hello", "hey"]) or clean_text in ["ഹലോ", "ഹായ്", "നമസ്കാരം"]:
+            return RhasspyIntent(
+                name="Greeting",
+                confidence=0.99,
+                slots={},
+                text=clean_text
+            )
+
+        # L. Live Weather Query
+        if any(w in q_lower for w in ["weather", "temperature", "climate", "kalavastha", "kaalavastha", "mazha"]) or any(k in clean_text for k in ["കാലാവസ്ഥ", "മഴ"]):
+            loc = "Kochi"
+            loc_match = re.search(r'\b(?:in|at|for|of)\s+([a-zA-Z\s]+)', q_lower)
+            if loc_match:
+                cand = loc_match.group(1).replace("today", "").replace("now", "").strip()
+                if cand and cand not in ["today", "now", "here"]:
+                    loc = cand
+            return RhasspyIntent(
+                name="GetWeather",
+                confidence=0.98,
+                slots={"location": loc},
+                text=clean_text
+            )
+
         return None
 
 rhasspy_nlu = RhasspyNLUEngine()

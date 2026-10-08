@@ -76,6 +76,12 @@ class RhasspySystemController:
             res = skill_registry.execute_skill("time.get", {}, context)
             time_val = res.get("result", datetime.datetime.now().strftime("%I:%M:%S %p"))
             tools_run.append({"tool": "time.get", "args": {}, "result": res})
+            if active_lang == "Malayalam":
+                return f"ഇപ്പോൾ സമയം {time_val} ആണ്.", tools_run, None
+            elif active_lang == "Hindi":
+                return f"अभी समय {time_val} है।", tools_run, None
+            elif active_lang == "Japanese":
+                return f"現在の時刻は {time_val} です。", tools_run, None
             return f"The current time is {time_val}.", tools_run, None
 
         # 7. Date Query
@@ -83,6 +89,10 @@ class RhasspySystemController:
             res = skill_registry.execute_skill("date.get", {}, context)
             date_val = res.get("result", datetime.datetime.now().strftime("%A, %B %d, %Y"))
             tools_run.append({"tool": "date.get", "args": {}, "result": res})
+            if active_lang == "Malayalam":
+                return f"ഇന്ന് {date_val} ആണ്.", tools_run, None
+            elif active_lang == "Hindi":
+                return f"आज {date_val} है।", tools_run, None
             return f"Today is {date_val}.", tools_run, None
 
         # 8. Math Calculation
@@ -119,6 +129,28 @@ class RhasspySystemController:
             else:
                 reply = "I am DELULU, made by SPDP company."
             return reply, [], None
+
+        # 11. Greeting
+        if name == "Greeting":
+            if active_lang == "Malayalam":
+                reply = "ഹലോ! ഞാൻ DELULU ആണ്. ഞാൻ സജ്ജമാണ്, എന്ത് സഹായമാണ് വേണ്ടത്?"
+            elif active_lang == "Hindi":
+                reply = "नमस्ते! मैं DELULU हूँ। मैं आपकी क्या मदद कर सकता हूँ?"
+            elif active_lang == "Japanese":
+                reply = "こんにちは！DELULUです。何かお手伝いできることはありますか？"
+            else:
+                reply = "Hello! I am DELULU. I am online and ready to assist you."
+            return reply, [], None
+
+        # 12. Live Weather
+        if name == "GetWeather":
+            loc = slots.get("location", "Kochi")
+            res = skill_registry.execute_skill("weather.get", {"location": loc}, context)
+            tools_run.append({"tool": "weather.get", "args": {"location": loc}, "result": res})
+            weather_text = res.get("result", f"Weather data for {loc} retrieved.")
+            if active_lang == "Malayalam":
+                return f"ഇന്നത്തെ കാലാവസ്ഥാ വിവരങ്ങൾ: {weather_text}", tools_run, None
+            return f"{weather_text}", tools_run, None
 
         return f"Intent '{name}' processed successfully.", tools_run, None
 

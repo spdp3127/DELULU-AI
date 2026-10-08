@@ -155,13 +155,25 @@ def run_delulu_tests():
     assert hw_res.json()["hermes_topic"] == "hermes/hotword/delulu/detected"
     print("[15] Rhasspy Hermes Hotword Detection: PASS (hermes/hotword/delulu/detected)")
 
-    # 16. Chat Integration with Rhasspy Brain
+    # 16. Chat Integration with Rhasspy Brain (Math, Greeting, Weather)
     chat_rhasspy = client.post("/api/v1/chat/send", json={"content": "now calculate 5+5"}, headers=headers_a)
     assert chat_rhasspy.status_code == 200
     msg_body = chat_rhasspy.json()["assistant_message"]
     assert msg_body["brain"] == "RHASSPY_ENGINE"
     assert "10" in msg_body["content"]
-    print(f"[16] End-to-End Rhasspy Brain Orchestration: PASS (Brain: {msg_body['brain']}, Spoken: '{msg_body['content']}')")
+
+    chat_greet = client.post("/api/v1/chat/send", json={"content": "hai"}, headers=headers_a)
+    assert chat_greet.status_code == 200
+    msg_greet = chat_greet.json()["assistant_message"]
+    assert msg_greet["brain"] == "RHASSPY_ENGINE"
+    assert "DELULU" in msg_greet["content"]
+
+    chat_weather = client.post("/api/v1/chat/send", json={"content": "weather in Kochi"}, headers=headers_a)
+    assert chat_weather.status_code == 200
+    msg_weather = chat_weather.json()["assistant_message"]
+    assert msg_weather["brain"] == "RHASSPY_ENGINE"
+    assert "Kochi" in msg_weather["content"]
+    print(f"[16] End-to-End Rhasspy Brain Orchestration: PASS (Math: '{msg_body['content']}', Greet: '{msg_greet['content']}', Weather: '{msg_weather['content']}')")
 
     print("\n" + "=" * 65)
     print("  ALL 16 DELULU & RHASSPY SUBSYSTEMS VERIFIED & PASSING!")
