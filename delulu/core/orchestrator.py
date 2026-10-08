@@ -467,6 +467,48 @@ class Orchestrator:
                 }
             }
 
+        # Check if user instructs full human-like desktop operation ("annal oru manushayn enthokke ano cheyyunnathu athupole akku")
+        is_human_directive = (
+            any(k in u_lower for k in [
+                "manushayn enthokke", "manushyan enthokke", "manushyan pole", "manushian pole",
+                "manushyan aano", "manushyanano", "human pole", "human aayi", "manushyan aayi",
+                "human operator"
+            ])
+            or (("manushyan" in u_lower or "manushayn" in u_lower) and any(k in u_lower for k in ["cheyyunnathu", "pole", "akku", "akkanam", "athupole"]))
+        )
+        if is_human_directive:
+            human_ack = (
+                "തീർച്ചയായും! ഒരു മനുഷ്യൻ കമ്പ്യൂട്ടറിൽ ഇരുന്നു ചെയ്യുന്ന **എല്ലാ കാര്യങ്ങളും നേരിട്ട് ചെയ്യാൻ കഴിയുന്ന 'Human Operator Mode'** ഞാൻ പൂർണ്ണമായി ആക്റ്റീവാക്കിയിട്ടുണ്ട്!\n\n"
+                "🧑‍💻 **DELULU-വിന്റെ മനുഷ്യ-സദൃശ്യമായ തത്സമയ കഴിവുകൾ (Real Human Operator Capabilities)**:\n"
+                "1. ⌨️ **കീബോർഡ് ടൈപ്പിംഗ് (`keyboard.type`)**: ഏത് വിൻഡോയിലും ആപ്പിലും ഒരു വ്യക്തിയെപ്പോലെ അക്ഷരങ്ങളും ടെക്സ്റ്റുകളും നേരിട്ട് ടൈപ്പ് ചെയ്തു നൽകാം.\n"
+                "2. 🎛️ **കീബോർഡ് ഷോർട്ട്കട്ടുകൾ (`keyboard.hotkey`)**: `Ctrl+C`, `Ctrl+V`, `Win+D` (Desktop), `Alt+Tab` (Window മാറ്റൽ), `Alt+F4` (Window ക്ലോസ് ചെയ്യൽ), `Enter`, `Esc`, `Space` എന്നിവ ഞൊടിയിടയിൽ പ്രവർത്തിപ്പിക്കാം.\n"
+                "3. 🖱️ **മൗസ് കൺട്രോൾ & സ്ക്രോളിംഗ് (`mouse.scroll` / `mouse.click`)**: വെബ്‌സൈറ്റുകളിലും ഡോക്യുമെന്റുകളിലും താഴേക്കും മുകളിലേക്കും സ്ക്രോൾ ചെയ്യാനും, ക്ലിക്ക് ചെയ്യാനും സാധിക്കും.\n"
+                "4. 🪟 **വിൻഡോ മാനേജ്‌മെന്റ് (`window.action`)**: ഡെസ്ക്ടോപ്പ് കാണിക്കൽ, വിൻഡോകൾ മിനിമൈസ് ചെയ്യൽ, ആപ്പുകൾ തമ്മിൽ മാറാൻ സഹായിക്കൽ.\n"
+                "5. 🎵 **മീഡിയ പ്ലേ/പോസ് (`media.control`)**: യൂട്യൂബിലോ സ്പോട്ടിഫൈയിലോ പാട്ടുകൾ പ്ലേ ചെയ്യാനും പോസ് ചെയ്യാനും അടുത്ത പാട്ടിലേക്ക് പോകാനും സാധിക്കും.\n"
+                "6. 📝 **കമ്പൗണ്ട് ഹ്യൂമൻ വർക്ക്‌ഫ്ലോ**: 'നോട്ട്പാഡ് തുറന്ന് ഇന്ന കാര്യം എഴുതൂ' അല്ലെങ്കിൽ 'ബ്രൗസറിൽ പുതിയ ടാബ് തുറക്കൂ' എന്ന് പറഞ്ഞാൽ ഒരു മനുഷ്യൻ ചെയ്യുന്നതുപോലെ കൃത്യമായി ചെയ്തുതരും!\n\n"
+                "ഇപ്പോൾത്തന്നെ പരീക്ഷിച്ചു നോക്കൂ: *'show desktop'*, *'scroll down'*, *'open notepad and write Hello Deva'*, *'press enter'* അല്ലെങ്കിൽ *'pause music'*!"
+            )
+            asst_msg = Message(
+                conversation_id=conversation_id,
+                user_id=user.id,
+                role="assistant",
+                content=human_ack
+            )
+            db.add(asst_msg)
+            db.commit()
+            return {
+                "conversation_id": conversation_id,
+                "assistant_message": {
+                    "id": asst_msg.id,
+                    "role": "assistant",
+                    "content": human_ack,
+                    "tool_calls": [],
+                    "created_at": asst_msg.created_at.isoformat(),
+                    "brain": "SPDP_HUMAN_OPERATOR",
+                    "language": "ml-IN"
+                }
+            }
+
         # Check if previous assistant message was a creative consultation
         prev_consultation = False
         prev_type = "website"
@@ -1014,6 +1056,59 @@ class Orchestrator:
                 if active_lang == "Malayalam":
                     return f"യൂട്യൂബ് തുറന്ന് '{sq}' തിരഞ്ഞിട്ടുണ്ട്.", tools_run
                 return f"Opened YouTube and searched for '{sq}'.", tools_run
+
+        # 0b2. Compound Open App and Type/Write Text
+        m_c_type = re.search(r'\b(?:open\s+|തുറന്ന്?\s+)?([a-zA-Z0-9\u0D00-\u0D7F]+)\s+(?:and\s+|ennitt\s+|pinne\s+)?(?:type|write|ezhuthu|type\s+cheyyu|എഴുതൂ|ടൈപ്പ്\s+ചെയ്യു)\s*:?\s*(.+)', q, re.IGNORECASE)
+        if m_c_type and not any(k in q for k in ["calculate", "claculate", "search"]):
+            target_app = m_c_type.group(1).strip()
+            target_txt = m_c_type.group(2).strip()
+            if any(w in target_app for w in ["നോട്ട്", "notepad", "note"]):
+                target_app = "notepad"
+            res = skill_registry.execute_skill("human.open_and_type", {"app_name": target_app, "text": target_txt}, context)
+            tools_run.append({"tool": "human.open_and_type", "args": {"app_name": target_app, "text": target_txt}, "result": res})
+            clean_a = target_app.capitalize()
+            if active_lang == "Malayalam":
+                return f"{clean_a} തുറന്ന് '{target_txt}' എന്ന് എഴുതിയിട്ടുണ്ട്.", tools_run
+            return f"Opened {clean_a} and typed: '{target_txt}'.", tools_run
+
+        # 0b3. Window & Desktop Human Actions
+        if any(w in q for w in ["show desktop", "minimize all", "desktop kanikku", "ഡെസ്ക്ടോപ്പ്"]):
+            res = skill_registry.execute_skill("window.action", {"action": "show_desktop"}, context)
+            tools_run.append({"tool": "window.action", "args": {"action": "show_desktop"}, "result": res})
+            return "ഡെസ്ക്ടോപ്പ് കാണിച്ചിട്ടുണ്ട് (എല്ലാ വിൻഡോകളും മിനിമൈസ് ചെയ്തു)." if active_lang == "Malayalam" else "Desktop shown.", tools_run
+
+        if any(w in q for w in ["switch window", "alt tab", "വിൻഡോ മാറ്റൂ", "അടുത്ത വിൻഡോ"]):
+            res = skill_registry.execute_skill("window.action", {"action": "switch"}, context)
+            tools_run.append({"tool": "window.action", "args": {"action": "switch"}, "result": res})
+            return "വിൻഡോ മാറ്റിയിട്ടുണ്ട്." if active_lang == "Malayalam" else "Switched active window.", tools_run
+
+        if any(w in q for w in ["close window", "വിൻഡോ ക്ലോസ് ചെയ്യൂ"]) or q in ["close this"]:
+            res = skill_registry.execute_skill("window.action", {"action": "close"}, context)
+            tools_run.append({"tool": "window.action", "args": {"action": "close"}, "result": res})
+            return "വിൻഡോ ക്ലോസ് ചെയ്തു." if active_lang == "Malayalam" else "Closed current window.", tools_run
+
+        # 0b4. Mouse Scroll
+        if any(w in q for w in ["scroll down", "thazhekk scroll", "താഴേക്ക് സ്ക്രോൾ"]):
+            res = skill_registry.execute_skill("mouse.scroll", {"direction": "down", "clicks": 6}, context)
+            tools_run.append({"tool": "mouse.scroll", "args": {"direction": "down"}, "result": res})
+            return "താഴേക്ക് സ്ക്രോൾ ചെയ്തു." if active_lang == "Malayalam" else "Scrolled down.", tools_run
+
+        if any(w in q for w in ["scroll up", "mukalilekk scroll", "മുകളിലേക്ക് സ്ക്രോൾ"]):
+            res = skill_registry.execute_skill("mouse.scroll", {"direction": "up", "clicks": 6}, context)
+            tools_run.append({"tool": "mouse.scroll", "args": {"direction": "up"}, "result": res})
+            return "മുകളിലേക്ക് സ്ക്രോൾ ചെയ്തു." if active_lang == "Malayalam" else "Scrolled up.", tools_run
+
+        # 0b5. Keyboard Key Press
+        if any(w in q for w in ["press enter", "enter adi", "എന്റർ അടിക്കൂ"]) or q in ["enter"]:
+            res = skill_registry.execute_skill("keyboard.press", {"key": "enter"}, context)
+            tools_run.append({"tool": "keyboard.press", "args": {"key": "enter"}, "result": res})
+            return "എന്റർ കീ അടിച്ചു." if active_lang == "Malayalam" else "Pressed Enter.", tools_run
+
+        # 0b6. Media Control
+        if any(w in q for w in ["pause music", "pause song", "pause video", "പാട്ട് പോസ്", "പോസ് ചെയ്യൂ"]):
+            res = skill_registry.execute_skill("media.control", {"action": "play_pause"}, context)
+            tools_run.append({"tool": "media.control", "args": {"action": "play_pause"}, "result": res})
+            return "മീഡിയ പോസ് ചെയ്തു." if active_lang == "Malayalam" else "Media paused.", tools_run
 
         # 0c. Well-being Question ("how are you", "sugamano")
         how_are_you_keys = [

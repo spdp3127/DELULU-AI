@@ -37,6 +37,14 @@ class PermissionGuard:
         "image.generate": "MEDIUM",
         "app.run": "MEDIUM",
         "project.run": "MEDIUM",
+        "keyboard.type": "MEDIUM",
+        "keyboard.press": "MEDIUM",
+        "keyboard.hotkey": "MEDIUM",
+        "mouse.scroll": "LOW",
+        "mouse.click": "LOW",
+        "window.action": "MEDIUM",
+        "media.control": "LOW",
+        "human.open_and_type": "MEDIUM",
 
         # HIGH Risk (State changes, file deletions, external messaging)
         "files.delete": "HIGH",

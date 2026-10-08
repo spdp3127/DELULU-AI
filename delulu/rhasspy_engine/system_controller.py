@@ -131,6 +131,75 @@ class RhasspySystemController:
                     return f"ഗൂഗിൾ തുറന്ന് '{query}' തിരഞ്ഞിട്ടുണ്ട്.", tools_run, None
                 return f"Opened Google and searched for '{query}'.", tools_run, None
 
+        # 0c. Compound Open App and Type/Write Text
+        if name == "CompoundOpenAndType":
+            app_name = slots.get("app_name", "notepad")
+            text = slots.get("text", "")
+            res = skill_registry.execute_skill("human.open_and_type", {"app_name": app_name, "text": text}, context)
+            tools_run.append({"tool": "human.open_and_type", "args": {"app_name": app_name, "text": text}, "result": res})
+            clean_app = app_name.capitalize()
+            if active_lang == "Malayalam":
+                return f"{clean_app} തുറന്ന് '{text}' എന്ന് ടൈപ്പ് ചെയ്തിട്ടുണ്ട്.", tools_run, None
+            elif active_lang == "Hindi":
+                return f"{clean_app} खोलकर '{text}' लिख दिया गया है।", tools_run, None
+            return f"Opened {clean_app} and typed: '{text}'.", tools_run, None
+
+        # 0d. Window & Desktop Action
+        if name == "WindowAction":
+            act = slots.get("action", "show_desktop")
+            res = skill_registry.execute_skill("window.action", {"action": act}, context)
+            tools_run.append({"tool": "window.action", "args": {"action": act}, "result": res})
+            res_str = res.get("result", "") if isinstance(res, dict) else str(res)
+            if active_lang == "Malayalam":
+                return f"വിൻഡോ ആക്ഷൻ ({act}) നിർവ്വഹിച്ചു.", tools_run, None
+            return f"{res_str}", tools_run, None
+
+        # 0e. Mouse Scroll
+        if name == "MouseScroll":
+            direction = slots.get("direction", "down")
+            clicks = slots.get("clicks", 6)
+            res = skill_registry.execute_skill("mouse.scroll", {"direction": direction, "clicks": clicks}, context)
+            tools_run.append({"tool": "mouse.scroll", "args": {"direction": direction, "clicks": clicks}, "result": res})
+            if active_lang == "Malayalam":
+                return f"സ്ക്രീൻ {direction} ദിശയിലേക്ക് സ്ക്രോൾ ചെയ്തു.", tools_run, None
+            return f"Scrolled {direction}.", tools_run, None
+
+        # 0f. Direct Keyboard Type
+        if name == "KeyboardType":
+            text = slots.get("text", "")
+            res = skill_registry.execute_skill("keyboard.type", {"text": text}, context)
+            tools_run.append({"tool": "keyboard.type", "args": {"text": text}, "result": res})
+            if active_lang == "Malayalam":
+                return f"സ്ക്രീനിൽ '{text}' എന്ന് ടൈപ്പ് ചെയ്തു.", tools_run, None
+            return f"Typed '{text}' on screen.", tools_run, None
+
+        # 0g. Keyboard Key Press
+        if name == "KeyboardPress":
+            key = slots.get("key", "enter")
+            res = skill_registry.execute_skill("keyboard.press", {"key": key}, context)
+            tools_run.append({"tool": "keyboard.press", "args": {"key": key}, "result": res})
+            if active_lang == "Malayalam":
+                return f"കീബോർഡിൽ '{key}' പ്രസ്സ് ചെയ്തു.", tools_run, None
+            return f"Pressed '{key}' key.", tools_run, None
+
+        # 0h. Keyboard Hotkey
+        if name == "KeyboardHotkey":
+            keys = slots.get("keys", "ctrl+c")
+            res = skill_registry.execute_skill("keyboard.hotkey", {"keys": keys}, context)
+            tools_run.append({"tool": "keyboard.hotkey", "args": {"keys": keys}, "result": res})
+            if active_lang == "Malayalam":
+                return f"ഷോർട്ട്കട്ട് '{keys}' പ്രവർത്തിപ്പിച്ചു.", tools_run, None
+            return f"Executed shortcut '{keys}'.", tools_run, None
+
+        # 0i. Media Control
+        if name == "MediaControl":
+            act = slots.get("action", "play_pause")
+            res = skill_registry.execute_skill("media.control", {"action": act}, context)
+            tools_run.append({"tool": "media.control", "args": {"action": act}, "result": res})
+            if active_lang == "Malayalam":
+                return f"മീഡിയ കൺട്രോൾ ({act}) നിർവ്വഹിച്ചു.", tools_run, None
+            return f"Media control '{act}' executed.", tools_run, None
+
         # 1. Open Desktop Application or Website
         if name == "OpenApp":
             app_name = slots.get("app_name", "App")

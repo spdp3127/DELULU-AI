@@ -189,6 +189,83 @@ class RhasspyNLUEngine:
                 text=clean_text
             )
 
+        # 3. Compound Open App and Type/Write Text:
+        # e.g. "open notepad and write hello world", "open notepad and type welcome", "notepad thurannu ith ezhuthu ..."
+        m_comp_type = re.search(r'\b(?:open\s+|തുറന്ന്?\s+)?([a-zA-Z0-9\u0D00-\u0D7F]+)\s+(?:and\s+|ennitt\s+|pinne\s+)?(?:type|write|ezhuthu|type\s+cheyyu|എഴുതൂ|ടൈപ്പ്\s+ചെയ്യു)\s*:?\s*(.+)', q_cmd, re.IGNORECASE)
+        if m_comp_type and not any(k in q_cmd for k in ["calculate", "claculate", "search"]):
+            t_app = m_comp_type.group(1).strip()
+            t_text = m_comp_type.group(2).strip()
+            if any(w in t_app for w in ["നോട്ട്", "notepad", "note"]):
+                t_app = "notepad"
+            return RhasspyIntent(
+                name="CompoundOpenAndType",
+                confidence=0.99,
+                slots={"app_name": t_app, "text": t_text},
+                text=clean_text
+            )
+
+        # --- HUMAN OPERATOR ACTIONS ---
+        # A. Desktop & Window Management
+        # "show desktop", "minimize all", "desktop kanikku", "ഡെസ്ക്ടോപ്പ് കാണിക്ക്"
+        if any(w in q_cmd for w in ["show desktop", "minimize all", "go to desktop", "desktop kanikku", "ഡെസ്ക്ടോപ്പ്", "ഡെസ്ക്ടോപ്പ് കാണിക്ക്", "ഡെസ്ക്ടോപ്പ് കാണിക്കൂ"]):
+            return RhasspyIntent(name="WindowAction", confidence=0.99, slots={"action": "show_desktop"}, text=clean_text)
+
+        # "switch window", "alt tab", "window mathu", "വിൻഡോ മാറ്റൂ", "അടുത്ത വിൻഡോ"
+        if any(w in q_cmd for w in ["switch window", "alt tab", "next window", "window mathu", "വിൻഡോ മാറ്റൂ", "അടുത്ത വിൻഡോ"]):
+            return RhasspyIntent(name="WindowAction", confidence=0.98, slots={"action": "switch"}, text=clean_text)
+
+        # "close window", "close this window", "വിൻഡോ ക്ലോസ് ചെയ്യൂ"
+        if any(w in q_cmd for w in ["close window", "close this window", "close active window", "window close cheyyu", "വിൻഡോ ക്ലോസ് ചെയ്യൂ"]) or q_cmd in ["close this", "close it"]:
+            return RhasspyIntent(name="WindowAction", confidence=0.98, slots={"action": "close"}, text=clean_text)
+
+        # "new tab", "open new tab", "പുതിയ ടാബ്"
+        if any(w in q_cmd for w in ["new tab", "open new tab", "പുതിയ ടാബ്"]):
+            return RhasspyIntent(name="WindowAction", confidence=0.98, slots={"action": "new_tab"}, text=clean_text)
+
+        # "close tab", "ടാബ് ക്ലോസ് ചെയ്യൂ"
+        if any(w in q_cmd for w in ["close tab", "close this tab", "tab close cheyyu", "ടാബ് ക്ലോസ് ചെയ്യൂ"]):
+            return RhasspyIntent(name="WindowAction", confidence=0.98, slots={"action": "close_tab"}, text=clean_text)
+
+        # B. Mouse Scrolling & Clicking
+        # "scroll down", "thazhekk scroll cheyyu", "താഴേക്ക് സ്ക്രോൾ ചെയ്യൂ"
+        if any(w in q_cmd for w in ["scroll down", "thazhekk scroll", "താഴേക്ക് സ്ക്രോൾ", "സ്ക്രോൾ ഡൗൺ"]):
+            return RhasspyIntent(name="MouseScroll", confidence=0.99, slots={"direction": "down", "clicks": 6}, text=clean_text)
+        # "scroll up", "mukalilekk scroll cheyyu", "മുകളിലേക്ക് സ്ക്രോൾ ചെയ്യൂ"
+        if any(w in q_cmd for w in ["scroll up", "mukalilekk scroll", "മുകളിലേക്ക് സ്ക്രോൾ", "സ്ക്രോൾ അപ്പ്"]):
+            return RhasspyIntent(name="MouseScroll", confidence=0.99, slots={"direction": "up", "clicks": 6}, text=clean_text)
+
+        # C. Direct Keyboard Typing
+        # "type <text>", "write <text>", "ith type cheyyu <text>", "ടൈപ്പ് ചെയ്യൂ <text>"
+        m_type = re.search(r'^\s*(?:type|write|ith\s+type\s+cheyyu|type\s+cheyyu|ടൈപ്പ്\s+ചെയ്യു|ടൈപ്പ്\s+ചെയ്യുക|എഴുതൂ)\s*:?\s*(.+)', q_cmd, re.IGNORECASE)
+        if m_type and not any(k in q_cmd for k in ["python", "code", "script", "website", "project", "notepad", "and"]):
+            return RhasspyIntent(name="KeyboardType", confidence=0.98, slots={"text": m_type.group(1).strip()}, text=clean_text)
+
+        # D. Keyboard Keys & Hotkeys
+        # "press enter", "enter adi", "enter adikk", "എന്റർ അടിക്കൂ"
+        if any(w in q_cmd for w in ["press enter", "enter adi", "enter adikk", "hit enter", "എന്റർ", "എന്റർ അടിക്കൂ"]) or q_cmd in ["enter"]:
+            return RhasspyIntent(name="KeyboardPress", confidence=0.99, slots={"key": "enter"}, text=clean_text)
+        # "press escape", "escape adikk", "എസ്കേപ്പ്"
+        if any(w in q_cmd for w in ["press escape", "press esc", "escape adikk", "എസ്കേപ്പ്"]) or q_cmd in ["escape", "esc"]:
+            return RhasspyIntent(name="KeyboardPress", confidence=0.99, slots={"key": "escape"}, text=clean_text)
+        # "press space", "space bar"
+        if any(w in q_cmd for w in ["press space", "space bar", "സ്പേസ്"]):
+            return RhasspyIntent(name="KeyboardPress", confidence=0.99, slots={"key": "space"}, text=clean_text)
+        # Hotkeys: "copy this", "ctrl c", "paste this", "ctrl v", "select all", "ctrl a"
+        if any(w in q_cmd for w in ["copy this", "copy cheyyu", "ctrl c", "കോപ്പി ചെയ്യൂ"]):
+            return RhasspyIntent(name="KeyboardHotkey", confidence=0.98, slots={"keys": "ctrl+c"}, text=clean_text)
+        if any(w in q_cmd for w in ["paste this", "paste cheyyu", "ctrl v", "പേസ്റ്റ് ചെയ്യൂ"]):
+            return RhasspyIntent(name="KeyboardHotkey", confidence=0.98, slots={"keys": "ctrl+v"}, text=clean_text)
+        if any(w in q_cmd for w in ["select all", "ctrl a", "എല്ലാം സെലക്ട് ചെയ്യൂ"]):
+            return RhasspyIntent(name="KeyboardHotkey", confidence=0.98, slots={"keys": "ctrl+a"}, text=clean_text)
+
+        # E. Media Play / Pause
+        if any(w in q_cmd for w in ["pause music", "pause song", "pause video", "pause playback", "മ്യൂസിക് പോസ്", "പാട്ട് പോസ്", "പോസ് ചെയ്യൂ"]) or q_cmd in ["pause", "പോസ്"]:
+            return RhasspyIntent(name="MediaControl", confidence=0.99, slots={"action": "play_pause"}, text=clean_text)
+        if any(w in q_cmd for w in ["play music", "play song", "play video", "resume music", "മ്യൂസിക് പ്ലേ", "പാട്ട് പ്ലേ", "റെസ്യൂം ചെയ്യൂ"]) or q_cmd in ["resume", "റെസ്യൂം"]:
+            return RhasspyIntent(name="MediaControl", confidence=0.99, slots={"action": "play_pause"}, text=clean_text)
+        if any(w in q_cmd for w in ["next song", "next track", "skip song", "അടുത്ത പാട്ട്", "സ്കിപ്പ് ചെയ്യൂ"]):
+            return RhasspyIntent(name="MediaControl", confidence=0.99, slots={"action": "next"}, text=clean_text)
+
         # --- SINGLE HARDWARE & DESKTOP INTENTS ---
         # A. Open or Run Desktop App or Website
         # English: "open calculator", "run calculator", "launch notepad", "start chrome", "run chrome"

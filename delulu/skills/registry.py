@@ -583,4 +583,219 @@ class CentralSkillRegistry:
             handler=_run_project
         ))
 
+        # 16. HUMAN OPERATOR: KEYBOARD TYPING
+        def _type_text(ctx, text: str, press_enter: bool = False):
+            import pyautogui, pyperclip, time
+            clean_t = str(text)
+            try:
+                clean_t.encode('ascii')
+                pyautogui.write(clean_t, interval=0.015)
+            except UnicodeEncodeError:
+                pyperclip.copy(clean_t)
+                pyautogui.hotkey('ctrl', 'v')
+                time.sleep(0.05)
+            if press_enter:
+                time.sleep(0.05)
+                pyautogui.press('enter')
+            return f"Typed on screen: '{clean_t}'" + (" (with Enter)" if press_enter else "")
+
+        self.register(Skill(
+            name="keyboard.type",
+            description="Type text directly into the active window or input on screen like a human operator.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "Text to type onto screen"},
+                    "press_enter": {"type": "boolean", "description": "Whether to press Enter key after typing", "default": False}
+                },
+                "required": ["text"]
+            },
+            category="HUMAN_OPERATOR",
+            handler=_type_text
+        ))
+
+        # 17. HUMAN OPERATOR: KEYBOARD PRESS
+        def _press_key(ctx, key: str = "enter"):
+            import pyautogui
+            k = key.lower().strip()
+            pyautogui.press(k)
+            return f"Pressed '{k}' key on keyboard."
+
+        self.register(Skill(
+            name="keyboard.press",
+            description="Press an individual keyboard key (e.g. enter, escape, space, tab, backspace, up, down).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Key name to press (enter, escape, space, tab, etc.)"}
+                },
+                "required": ["key"]
+            },
+            category="HUMAN_OPERATOR",
+            handler=_press_key
+        ))
+
+        # 18. HUMAN OPERATOR: KEYBOARD HOTKEY
+        def _press_hotkey(ctx, keys: str):
+            import pyautogui
+            k_list = [k.strip().lower() for k in keys.split('+')]
+            pyautogui.hotkey(*k_list)
+            return f"Executed shortcut '{keys}'."
+
+        self.register(Skill(
+            name="keyboard.hotkey",
+            description="Execute keyboard shortcut combinations (e.g. ctrl+c, ctrl+v, ctrl+a, win+d, alt+tab, alt+f4, ctrl+t, ctrl+w).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "keys": {"type": "string", "description": "Shortcut combination separated by '+' (e.g. ctrl+c, win+d)"}
+                },
+                "required": ["keys"]
+            },
+            category="HUMAN_OPERATOR",
+            handler=_press_hotkey
+        ))
+
+        # 19. HUMAN OPERATOR: MOUSE SCROLL
+        def _scroll_mouse(ctx, direction: str = "down", clicks: int = 5):
+            import pyautogui
+            amt = -abs(int(clicks)) * 100 if direction.lower() in ["down", "thazhe", "niche", "bottom"] else abs(int(clicks)) * 100
+            pyautogui.scroll(amt)
+            return f"Scrolled mouse {direction} by {clicks} notches."
+
+        self.register(Skill(
+            name="mouse.scroll",
+            description="Scroll mouse wheel up or down like a human operator on web pages and documents.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "direction": {"type": "string", "description": "Direction to scroll ('down' or 'up')", "default": "down"},
+                    "clicks": {"type": "integer", "description": "Number of scroll clicks/steps", "default": 5}
+                }
+            },
+            category="HUMAN_OPERATOR",
+            handler=_scroll_mouse
+        ))
+
+        # 20. HUMAN OPERATOR: MOUSE CLICK
+        def _click_mouse(ctx, button: str = "left", clicks: int = 1, x: int = None, y: int = None):
+            import pyautogui
+            if x is not None and y is not None:
+                pyautogui.click(x=x, y=y, button=button, clicks=clicks)
+                return f"Mouse clicked {button} at ({x}, {y})."
+            pyautogui.click(button=button, clicks=clicks)
+            return f"Mouse clicked {button} button {clicks} time(s)."
+
+        self.register(Skill(
+            name="mouse.click",
+            description="Click mouse button (left, right, double click) at current cursor position or coordinates.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "button": {"type": "string", "description": "Mouse button ('left' or 'right')", "default": "left"},
+                    "clicks": {"type": "integer", "description": "1 for single click, 2 for double click", "default": 1}
+                }
+            },
+            category="HUMAN_OPERATOR",
+            handler=_click_mouse
+        ))
+
+        # 21. HUMAN OPERATOR: WINDOW MANAGEMENT
+        def _window_action(ctx, action: str):
+            import pyautogui
+            act = action.lower().strip()
+            if act in ["desktop", "show_desktop", "minimize_all"]:
+                pyautogui.hotkey('win', 'd')
+                return "Desktop shown (all windows minimized to desktop)."
+            elif act in ["switch", "switch_window", "alt_tab"]:
+                pyautogui.hotkey('alt', 'tab')
+                return "Switched active window."
+            elif act in ["close", "close_window"]:
+                pyautogui.hotkey('alt', 'f4')
+                return "Closed current window."
+            elif act in ["new_tab"]:
+                pyautogui.hotkey('ctrl', 't')
+                return "Opened new browser tab."
+            elif act in ["close_tab"]:
+                pyautogui.hotkey('ctrl', 'w')
+                return "Closed current browser tab."
+            elif act in ["task_manager"]:
+                pyautogui.hotkey('ctrl', 'shift', 'esc')
+                return "Opened Windows Task Manager."
+            return f"Window action '{action}' performed."
+
+        self.register(Skill(
+            name="window.action",
+            description="Manage desktop windows like a human (show desktop, switch window, close window, new tab, close tab).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "Action name: 'show_desktop', 'switch', 'close', 'new_tab', 'close_tab'"}
+                },
+                "required": ["action"]
+            },
+            category="HUMAN_OPERATOR",
+            handler=_window_action
+        ))
+
+        # 22. HUMAN OPERATOR: MEDIA PLAY / PAUSE
+        def _media_control(ctx, action: str = "play_pause"):
+            import pyautogui
+            act = action.lower().strip()
+            if act in ["play", "pause", "play_pause", "toggle"]:
+                pyautogui.press('playpause')
+                return "Toggled media playback (Play/Pause)."
+            elif act in ["next", "next_track"]:
+                pyautogui.press('nexttrack')
+                return "Skipped to next media track."
+            elif act in ["prev", "previous", "prev_track"]:
+                pyautogui.press('prevtrack')
+                return "Returned to previous media track."
+            elif act in ["stop"]:
+                pyautogui.press('stop')
+                return "Stopped media playback."
+            return f"Media control '{action}' executed."
+
+        self.register(Skill(
+            name="media.control",
+            description="Control media playback like a human (Play, Pause, Next, Previous track).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "Action: 'play_pause', 'next', 'prev', 'stop'", "default": "play_pause"}
+                }
+            },
+            category="HUMAN_OPERATOR",
+            handler=_media_control
+        ))
+
+        # 23. HUMAN OPERATOR: OPEN APP AND TYPE TEXT
+        def _open_and_type(ctx, app_name: str, text: str):
+            import pyautogui, pyperclip, time, subprocess
+            from skills.system_ops import SystemSkill
+            SystemSkill().open_app(app_name)
+            time.sleep(0.7)  # allow window to surface
+            try:
+                text.encode('ascii')
+                pyautogui.write(text, interval=0.015)
+            except UnicodeEncodeError:
+                pyperclip.copy(text)
+                pyautogui.hotkey('ctrl', 'v')
+            return f"Opened {app_name} and typed: '{text}'."
+
+        self.register(Skill(
+            name="human.open_and_type",
+            description="Open an application (like Notepad) and type text into it like a human operator.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "app_name": {"type": "string", "description": "Application name (e.g. notepad)"},
+                    "text": {"type": "string", "description": "Text to write into the app"}
+                },
+                "required": ["app_name", "text"]
+            },
+            category="HUMAN_OPERATOR",
+            handler=_open_and_type
+        ))
+
 skill_registry = CentralSkillRegistry()
