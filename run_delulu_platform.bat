@@ -1,18 +1,16 @@
 @echo off
 cd /d "%~dp0"
-title DELULU - AI Personal Operating Layer
+title DELULU - Native Desktop AI Assistant
 echo ========================================================
-echo        STARTING DELULU MULTI-USER AI PLATFORM
+echo        STARTING DELULU NATIVE DESKTOP ASSISTANT
 echo ========================================================
 echo.
-echo Launching server at http://localhost:8000...
-start "" "http://localhost:8000"
-python delulu/backend/main.py
+echo Launching DELULU Native Desktop Window (Zero Localhost UI)...
+python delulu/desktop_app.py
 if errorlevel 1 (
     echo.
-    echo Server stopped or dependencies missing.
     echo Running dependency check...
     python -m pip install -r requirements.txt
-    python delulu/backend/main.py
+    python delulu/desktop_app.py
 )
 pause
