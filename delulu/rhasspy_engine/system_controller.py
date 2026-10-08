@@ -82,25 +82,35 @@ class RhasspySystemController:
             return f"🟢 {clean_display} is now RUNNING. {res_str}", tools_run, None
 
         # 0a. Compound Open App and Calculate
-        # e.g. "open calculator and calculate 5+5", "open calculator and claculate 5+5"
+        # e.g. "open calculator and calculate 5+5", "open calculator and claculate 5+5", "calculator thurannu kanakku cheyyu"
         if name == "CompoundOpenAndCalculate":
             app_name = slots.get("app_name", "calculator")
-            expr = slots.get("expression", "")
+            expr = slots.get("expression", "").strip()
 
-            # 1. Run / Open Calculator
+            # 1. Run / Open Calculator in Windows
             res_open = skill_registry.execute_skill("app.run", {"app_name": app_name, "task": expr}, context)
             tools_run.append({"tool": "app.run", "args": {"app_name": app_name, "task": expr}, "result": res_open})
+
+            if not expr:
+                # User asked to open calculator and calculate, but didn't provide numbers yet
+                if active_lang == "Malayalam":
+                    return "കാൽക്കുലേറ്റർ ഇപ്പോൾ തുറന്നിട്ടുണ്ട്. ഏത് കണക്കാണ് ചെയ്യേണ്ടത്? പറയൂ (ഉദാ: 5+5 അല്ലെങ്കിൽ 120*45), ഞാൻ ഉടൻ തന്നെ കാൽക്കുലേറ്ററിൽ കണക്കുകൂട്ടിത്തരാം!", tools_run, None
+                elif active_lang == "Hindi":
+                    return "मैंने कैलकुलेटर खोल दिया है। आप कौन सी गणना करना चाहते हैं? बताएं (उदा: 5+5 या 120*45), मैं तुरंत हल कर दूँगा!", tools_run, None
+                return "I have opened Calculator. Which calculation would you like me to do? (e.g., 5+5 or 120*45) Let me know and I will solve it right away!", tools_run, None
 
             # 2. Calculate Math
             res_math = skill_registry.execute_skill("math.calculate", {"expression": expr}, context)
             tools_run.append({"tool": "math.calculate", "args": {"expression": expr}, "result": res_math})
             res_str = res_math.get("result", expr) if isinstance(res_math, dict) else str(res_math)
 
-            # 3. Type into open Windows Calculator
+            # 3. Wait for Calculator window and type into it
             try:
-                import pyautogui
+                import time, pyautogui
+                pyautogui.FAILSAFE = False
+                time.sleep(0.7)
                 norm_expr = expr.replace(' ', '')
-                pyautogui.typewrite(f"{norm_expr}=", interval=0.04)
+                pyautogui.typewrite(f"{norm_expr}=", interval=0.06)
             except Exception:
                 pass
 
@@ -292,8 +302,15 @@ class RhasspySystemController:
         if name == "CalculateMath":
             expr = slots.get("expression", "")
             res = skill_registry.execute_skill("math.calculate", {"expression": expr}, context)
-            res_str = res.get("result", expr)
+            res_str = res.get("result", expr) if isinstance(res, dict) else str(res)
             tools_run.append({"tool": "math.calculate", "args": {"expression": expr}, "result": res})
+            try:
+                import pyautogui
+                pyautogui.FAILSAFE = False
+                norm_expr = expr.replace(' ', '')
+                pyautogui.typewrite(f"{norm_expr}=", interval=0.04)
+            except Exception:
+                pass
             if active_lang == "Malayalam":
                 return f"{res_str} ആണ്.", tools_run, None
             elif active_lang == "Hindi":

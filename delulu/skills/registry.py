@@ -407,6 +407,7 @@ class CentralSkillRegistry:
                 # If Windows Calculator is open on screen, type into it
                 try:
                     import pyautogui
+                    pyautogui.FAILSAFE = False
                     pyautogui.typewrite(f"{norm.replace(' ', '')}=", interval=0.03)
                 except Exception:
                     pass

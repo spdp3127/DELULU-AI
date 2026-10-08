@@ -158,14 +158,33 @@ class RhasspyNLUEngine:
         # 1. Compound Open App and Calculate Math:
         # e.g. "open calculator and calculate 5+5", "open calculator and claculate 5+5", "open calc and 5+5"
         # Malayalam: "കാൽക്കുലേറ്റർ തുറന്ന് 5+5 കണക്കുകൂട്ടൂ", "കാൽക്കുലേറ്റർ തുറന്ന് 5+5 എത്രയാണ്", "calculator thurannu 5+5 calculate cheyyu"
+        # Manglish: "calculator thurannu kanakku cheyyu", "calculator thurannu 5 plus 5", "calculator thura 10+20"
+        is_negative_report = any(neg in q_cmd for neg in [
+            "cheyyunnilla", "cheyyilla", "aakunnilla", "work aavunnilla", "not working", "working alla", 
+            "പറ്റുന്നില്ല", "ചെയ്യുന്നില്ല", "ആകുന്നില്ല", "പ്രവർത്തിക്കുന്നില്ല", "parayumbol"
+        ])
+        
         is_calc_keyword = bool(re.search(r'\b(?:calc|calculator|\u0915\u0948\u0932\u0915\u0941\u0932\u0947\u091f\u0930)\b', q_cmd, re.I)) or any(k in q_cmd for k in ["കാൽക്കു", "കൽക്കു", "ക്യാൽക്കു"])
         is_open_keyword = any(k in q_cmd for k in [
-            "open", "launch", "start", "run", "തുറ", "thura", "ഓപ്പൺ", "खोलो"
+            "open", "launch", "start", "run", "തുറ", "തുറന്ന്", "തുറക്കൂ", "thura", "thurannu", "thurann", "ഓപ്പൺ", "खोलो"
         ])
-        math_expr_match = re.search(r'([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)', q_cmd)
+        is_calc_action = any(k in q_cmd for k in [
+            "calculate", "claculate", "compute", "solve", "math", "arithmetic", 
+            "kanakku", "kanakk", "kootu", "kootanam", "kurakku", "gunikku", "harikku",
+            "കണക്കു", "കണക്കുകൂട്ടൂ", "കണക്കുകൂട്ടുക", "കണക്കുകൂട്ട്", "കൂട്ടുക", "കുറയ്ക്കുക", "ഗുണിക്കുക", "ഹരിക്കുക", "എത്ര", "ethra"
+        ])
 
-        if is_calc_keyword and (is_open_keyword or any(k in q_cmd for k in ["calculate", "claculate", "compute", "കണക്കു", "എത്ര", "ethra"])) and math_expr_match:
-            calc_expr = math_expr_match.group(1).strip()
+        if not is_negative_report and is_calc_keyword and (is_open_keyword or is_calc_action):
+            # Normalize math expressions from text (words to symbols)
+            norm_c = q_cmd
+            norm_c = re.sub(r'\b(?:plus|kootanam|kootu|cherkku|add)\b|കൂട്ടുക|കൂട്ടണം|കൂട്ട്|പ്ലസ്', ' + ', norm_c)
+            norm_c = re.sub(r'\b(?:minus|kurakkanam|kurakku|subtract)\b|കുറയ്ക്കുക|കുറയ്ക്കണം|കുറയ്ക്ക്|മൈനസ്', ' - ', norm_c)
+            norm_c = re.sub(r'\b(?:into|times|multiply|gunikku|gunikkanam|gunanam)\b|ഗുണിക്കുക|ഗുണിക്കണം|ഗുണിക്ക്|ഇന്റു', ' * ', norm_c)
+            norm_c = re.sub(r'\b(?:divided\s+by|divide|harikku|harikkanam|bhagikku)\b|ഹരിക്കുക|ഹരിക്കണം|ഹരിക്ക്|ഡിവൈഡ്', ' / ', norm_c)
+
+            math_expr_match = re.search(r'([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)', norm_c)
+            calc_expr = math_expr_match.group(1).strip() if math_expr_match else ""
+
             return RhasspyIntent(
                 name="CompoundOpenAndCalculate",
                 confidence=0.99,
@@ -275,7 +294,12 @@ class RhasspyNLUEngine:
         app_mal_match = re.search(r'([a-zA-Z0-9\u0D00-\u0D7F]+)\s+(?:തുറക്കൂ|തുറക്കുക|തുറന്ന്\s+തരൂ|തുറ|ഓപ്പൺ\s+ചെയ്യു|ഓപ്പൺ\s+ചെയ്യുക|thura|open\s+cheyyu|thuranu\s+tha|റൺ\s+ചെയ്യു|റൺ\s+ചെയ്യുക|റൺ)', q_cmd)
         app_hi_match = re.search(r'([a-zA-Z0-9\u0900-\u097F]+)\s+(?:खोलो|खोलिए|चालू\s+करो|रन\s+करो)', q_cmd)
 
-        if (app_match or app_mal_match or app_hi_match) and not any(k in q_cmd for k in ["python", "script", "project", "website", "calculate", "claculate", "compute", "math", "tab", "file", "+", "-", "*", "/", "കണക്കു"]):
+        if (app_match or app_mal_match or app_hi_match) and not any(k in q_cmd for k in [
+            "python", "script", "project", "website", "calculate", "claculate", "compute", "math", "tab", "file",
+            "+", "-", "*", "/", "കണക്കു", "kanakku", "kanakk", "kootu", "kootanam", "gunikku", "harikku", "ethra",
+            "cheyyunnilla", "cheyyilla", "aakunnilla", "work aavunnilla", "not working", "working alla", "parayumbol",
+            "പറ്റുന്നില്ല", "ചെയ്യുന്നില്ല", "ആകുന്നില്ല"
+        ]):
             raw_app = (app_match.group(1) if app_match else (app_mal_match.group(1) if app_mal_match else app_hi_match.group(1))).strip()
             # Strip accidental conjunctions or trailing words
             raw_app = re.sub(r'\s+(?:and|please|now|app|window)\b.*', '', raw_app).strip()
@@ -403,10 +427,15 @@ class RhasspyNLUEngine:
             )
 
         # H. Math Calculation (Zero-latency offline arithmetic)
-        math_regex = r'(?:(?:now\s+)?c[al]{2}culate|compute|solve|what\s+is|value\s+of)?\s*([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)'
-        norm_math = q_cmd.replace('times', '*').replace('plus', '+').replace('minus', '-').replace('divided by', '/')
+        norm_math = q_cmd
+        norm_math = re.sub(r'\b(?:plus|kootanam|kootu|cherkku|add)\b|കൂട്ടുക|കൂട്ടണം|കൂട്ട്|പ്ലസ്', ' + ', norm_math)
+        norm_math = re.sub(r'\b(?:minus|kurakkanam|kurakku|subtract)\b|കുറയ്ക്കുക|കുറയ്ക്കണം|കുറയ്ക്ക്|മൈനസ്', ' - ', norm_math)
+        norm_math = re.sub(r'\b(?:into|times|multiply|gunikku|gunikkanam|gunanam)\b|ഗുണിക്കുക|ഗുണിക്കണം|ഗുണിക്ക്|ഇന്റു', ' * ', norm_math)
+        norm_math = re.sub(r'\b(?:divided\s+by|divide|harikku|harikkanam|bhagikku)\b|ഹരിക്കുക|ഹരിക്കണം|ഹരിക്ക്|ഡിവൈഡ്', ' / ', norm_math)
+
+        math_regex = r'(?:(?:now\s+)?c[al]{2}culate|compute|solve|what\s+is|value\s+of|kanakku\s+kootu|kanakku\s+cheyyu|കണക്കുകൂട്ടൂ|എത്രയാണ്|എത്ര|ethra)?\s*([0-9\.]+\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+(?:\s*[\+\-\*\/\^xX÷%]\s*[0-9\.]+)*)'
         m_calc = re.search(math_regex, norm_math)
-        if m_calc and not re.search(r'^\s*(?:open|run|python|execute|code|script|powershell)\b', q_cmd):
+        if m_calc and not re.search(r'^\s*(?:open|run|python|execute|code|script|powershell|thurannu|തുറ)\b', q_cmd):
             expr = m_calc.group(1).strip()
             if re.search(r'[\+\-\*\/\^xX÷%]', expr) and re.search(r'\d', expr):
                 return RhasspyIntent(
